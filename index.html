@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>WAZUH Process Tree Viewer - Hunting & IR</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #1a202c; color: #e2e8f0; overflow: hidden; }
+        .navbar { background: #111827; color: #00a0d1; padding: 15px 25px; border-bottom: 2px solid #00a0d1; }
+        .toolbar { background: #1f2937; padding: 12px 25px; display: flex; gap: 15px; border-bottom: 1px solid #374151; align-items: center; }
+        #mynetwork { width: 100%; height: calc(100vh - 160px); background: #1a202c; cursor: grab; }
+        input, select { background: #374151; border: 1px solid #4b5563; color: white; padding: 8px; border-radius: 4px; }
+        button { background: #00a0d1; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .stats { background: #111827; padding: 5px 25px; font-size: 12px; color: #9ca3af; font-weight: bold; }
+        .stats span { color: #00a0d1; }
+        div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !important; border: 1px solid #00a0d1 !important; padding: 10px !important; border-radius: 5px; font-family: 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h2 style="margin:0; letter-spacing: 2px;">🌳 WAZUH Process Tree Viewer - Hunting & IR</h2>
+    </div>
+
+    <div class="toolbar">
+        <div>AGENT ID: <input type="text" id="agentInput" value="001" style="width: 50px;"></div>
+        <div>TIME RANGE: 
+            <select id="timeRange">
+                <option value="0.083">Últimos 5 Minutos</option>
+                <option value="1">Última 1 Hora</option>
+                <option value="24" selected>Últimas 24 Horas</option>
+            </select>
+        </div>
+        <div>FILTER: <input type="text" id="filterInput" placeholder="ex: notepad.exe"></div>
+        <button onclick="loadTree()">ANALISAR AGENTE</button>
+    </div>
+
+    <div class="stats">
+        PROCESSOS: <span id="statTotal">0</span> | AGENTE: <span id="agentDisplay">---</span> | ATUALIZAÇÃO: <span id="statTime">--:--:--</span>
+    </div>
+
+    <div id="mynetwork"></div>
+
+    <script>
+        let network = null;
+        let nodesDataset = null;
+
+        async function loadTree() {
+            const agentId = document.getElementById('agentInput').value;
+            const range = document.getElementById('timeRange').value;
+            const filter = document.getElementById('filterInput').value;
+            const container = document.getElementById('mynetwork');
+            
+            try {
+                const response = await fetch(`http://${window.location.hostname}:5000/api/process-tree?agent_id=${agentId}&filter=${filter}&range=${range}`);
+                const data = await response.json();
+
+                document.getElementById('statTotal').innerText = data.stats ? data.stats.total : 0;
+                document.getElementById('statTime').innerText = data.stats ? data.stats.last_update : "--:--:--";
+                document.getElementById('agentDisplay').innerText = agentId;
+
+                nodesDataset = new vis.DataSet(data.nodes || []);
+                const edgesDataset = new vis.DataSet(data.edges || []);
+                
+                const options = {
+                    nodes: { shape: 'dot', size: 20, font: { color: '#ffffff' }, borderWidth: 2, shadow: true },
+                    edges: { arrows: 'to', color: { color: '#4b5563' } },
+                    physics: { stabilization: true, barnesHut: { gravitationalConstant: -2000 } },
+                    interaction: { hover: true }
+                };
+
+                if(network) network.destroy();
+                network = new vis.Network(container, { nodes: nodesDataset, edges: edgesDataset }, options);
+
+                network.on("dragEnd", (p) => { if(p.nodes.length) nodesDataset.update({id: p.nodes[0], fixed: {x:true, y:true}}); });
+                network.on("dragStart", (p) => { if(p.nodes.length) nodesDataset.update({id: p.nodes[0], fixed: {x:false, y:false}}); });
+            } catch (e) { console.error(e); }
+        }
+        loadTree();
+    </script>
+</body>
+</html>
