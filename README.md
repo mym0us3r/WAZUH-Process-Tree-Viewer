@@ -1,7 +1,13 @@
 # WAZUH Process Tree Viewer (WPTV)
 WAZUH Process Tree Viewer (WPTV) is a high-performance forensic visualization tool designed for the Wazuh ecosystem. It transforms raw Windows Security Logs (Event ID 4688) into interactive, draggable relationship graphs, enabling analysts to trace process lineages (Parent-Child) during Threat Hunting and Incident Response (IR) operations.
 
-Greetz: AwwalQuan
+--------------------------------
+> Version: 1.0 
+> Last Updated: 2025-12-18
+> Wazuh Compatibility: 4.14.1
+> OpenSearch Dashboards: 2.19.3
+
+![WPTV Main Dashboard](img/wazuh_ptv1.png)
 
 ## Project Architecture & File Structure:
 1. server.py: Entrypoint. The Flask server that handles web routing and serves the frontend.
@@ -51,17 +57,29 @@ RestartSec=5
 WantedBy=multi-user.target
 
 ## Management Commands:
-* Start: # sudo systemctl start wazuh-process-tree
-* Check Status: # sudo systemctl status wazuh-process-tree
-* Enable on Boot: # sudo systemctl enable wazuh-process-tree
+* (Start): # sudo systemctl start wazuh-process-tree
+* (Stop): # sudo systemctl stop wazuh-process-tree
+* (Check Status): # sudo systemctl status wazuh-process-tree
+* (Enable on Boot): # sudo systemctl enable wazuh-process-tree
 
 ## Usage Guide
-Ensure Audit Process Creation is enabled on Windows targets to generate Event ID 4688.
+HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Event ID 4688.
+> Go to: https://medium.com/@k1sh/habilitando-e-monitorando-a-auditoria-de-cria%C3%A7%C3%A3o-de-processo-com-wazuh-eventid-4688-com-o-7893524baff5
 
-* Access the tool via browser: http://<YOUR_WAZUH_IP>:5000
+* Access the tool via browser: https://<YOUR_WAZUH_IP>:5000
 * Enter the Agent ID (e.g., 001).
+* https://<YOUR_WAZUH_IP>:5000/?agent_id=001
 * Select the Time Range (WPTV uses UTC comparison for forensic precision).
-*- Click Analisar Agente (Analyze Agent).
+* Click Analisar Agente (Analyze Agent).
 
-License
+## Special Thanks
+
+* I would like to extend my sincere gratitude to **AwwalQuan** for their invaluable support, guidance, and contributions during the development of this project. And also to the **Wazuh Community** for providing an amazing open-source platform for security research.
+
+## Contributors:
+[@AwwalQuan](https://github.com/AwwalQuan)
+
+[@wazuh](https://github.com/wazuh)
+
+## License
 Distributed under the MIT License. See LICENSE for more information.
