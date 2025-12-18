@@ -7,7 +7,7 @@ WAZUH Process Tree Viewer (WPTV) is a high-performance forensic visualization to
 > Wazuh Compatibility: 4.14.1
 > OpenSearch Dashboards: 2.19.3
 
-![WPTV Main Dashboard](img/wazuh-ptv.png)
+![WPTV Main Dashboard](img/wazuh_process_tree_viewer.png)
 
 ## Project Architecture & File Structure:
 1. server.py: Entrypoint. The Flask server that handles web routing and serves the frontend.
