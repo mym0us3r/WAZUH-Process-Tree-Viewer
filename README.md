@@ -79,6 +79,9 @@ https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer/blob/main/img/WAZUH%20-%20
 
 * I would like to extend my sincere gratitude to **AwwalQuan** for their invaluable support, guidance, and contributions during the development of this project. And also to the **Wazuh Community** for providing an amazing open-source platform for security research.
 
+## Goal 
+* This project is in its initial version and will undergo updates until it matures. For now, we are making minor adjustments to reach our goal. But remember: the destination is not the last stop, but a new point of departure.
+
 ## Contributors:
 [@AwwalQuan](https://github.com/AwwalQuan)
 
