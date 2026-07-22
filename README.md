@@ -108,6 +108,7 @@ HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Eve
 ## WPTV Demo
 ![WPTV Demo](img/wptv_demo.gif)
 
+![Screenshot](img/wptv.png)
 
 ## Special Thanks
 
