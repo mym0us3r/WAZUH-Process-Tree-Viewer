@@ -29,6 +29,7 @@ WAZUH Process Tree Viewer (WPTV) is a high-performance forensic visualization to
 3. `public/index.html`: Frontend. Interactive UI powered by `vis-network.js`, radial layout, wave-drag animation, and Dark Mode support.
 4. `requirements.txt`: Dependencies. Required Python libraries for the environment.
 5. `wazuh-process-tree.service`: SystemD configuration template for background service management.
+6. `public/favicon.svg` / `public/favicon.ico`: Browser tab icon and in-page navbar icon.
 
 ## Companion Sysmon Ruleset
 
@@ -37,9 +38,31 @@ WPTV's Sysmon correlation only surfaces data that Wazuh actually writes to `aler
 - A missing `-enc` abbreviation in the PowerShell Base64-encoded-command detection (rules `92057`/`92059`/`92071`), which prevented the most common real-world invocation from ever escalating past a low-severity generic rule.
 - A missing end-of-string anchor in rule `92213` ("Executable file dropped in folder commonly used by malware"), which caused legitimate `.json` files to be misclassified as executables.
 
+### Sysmon EventID coverage map
+
+The ruleset tags every Sysmon EventID 1-9 with a `sysmon_eventN` group (confirmed via `grep -rhoP 'sysmon_event([0-9]+)' *sysmon*`), but only some of them have actual behavioral detection rules built on top, and WPTV only correlates a subset of those into the graph:
+
+| EventID | What it is | Behavioral rules exist? | Correlated by WPTV? |
+|---|---|---|---|
+| 1 | Process Creation | Yes - multiple modules (infrastructure routing, process/parent anomaly, native anchor chain) | **Yes** - hashes, ProcessGuid, integrity, product/company |
+| 3 | Network Connection | Yes - suspicious outbound connection detection | **Yes** - drawn as network edges + Relations tab |
+| 7 | Image Load (DLL) | Yes - `vaultcli.dll` tiered detection | **Yes** - Detections tab |
+| 8 | CreateRemoteThread | Yes - cross-process injection / lateral movement | Not yet |
+| 10 | Process Access | Yes - LSASS / sensitive process memory access | Not yet |
+| 11 | File Create | Yes - suspicious file creation in high-risk paths | **Yes** - Detections tab |
+| 13 | Registry Value Set | Yes - persistence / defense evasion | Not yet |
+| 20 | WmiEvent (Consumer Activity) | Yes - WMI-based persistence | Not yet |
+| 2, 4, 5, 6, 9 | FileCreateTime, service state change, process terminate, driver load, RawAccessRead | Group-tagged only, no behavioral rules in this ruleset | No |
+
+EventID 8/10/13/20 having real behavioral rules but no WPTV correlation yet is a known gap, not an oversight - see Roadmap in the technical report.
+
 ## Technical Report
 
 A full technical report documenting the development, the Sysmon correlation architecture, the adversarial simulation methodology used for validation, and the ruleset bugs above is available at `docs/WPTV_Relatorio_Tecnico_PT.docx` (Brazilian Portuguese).
+
+## Changelog
+
+See changelog for the full version history.
 
 ## Installation & Setup
 
@@ -61,7 +84,27 @@ The service must be able to read Wazuh logs and be executed by the dashboard use
 * chmod -R 755 /usr/share/wazuh-dashboard/plugins/process_tree_api
 
 ## 4. Discover Link Base URL
-`public/index.html` auto-detects the Wazuh Dashboard host from the page's own hostname (`window.location.hostname`), which works out of the box when WPTV is reverse-proxied on the same host as the Dashboard (just a different port). If your Dashboard runs on a different host than this plugin, edit the `WAZUH_DASHBOARD_BASE_URL` constant near the top of the `<script>` block directly.
+
+Every node's "Open in Wazuh Discover" link is built from a JavaScript constant, `WAZUH_DASHBOARD_BASE_URL`, in the **first lines** of the `<script>` block in `public/index.html` - look for the `CONFIGURATION` banner comment, it's the very first thing in the file's script section, before any other code:
+
+```js
+const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
+```
+
+**Why this can't be fully automatic**: WPTV is a Flask app running on its own port (5000 by default); the Wazuh Dashboard is a separate application, usually on port 443 of the same machine - but not always. There is no reliable way for client-side JavaScript to discover the Dashboard's address on its own, so this constant exists as the one thing you may need to check after cloning.
+
+**How to check if you need to change it:**
+1. Open WPTV in your browser and look at the navbar - it shows a live label: `Discover base URL: https://<detected-value>`.
+2. Compare that value against the actual URL you use to log into your Wazuh Dashboard.
+3. If they match (the common case: WPTV reverse-proxied on the same host as the Dashboard, just a different port) - do nothing, it already works.
+4. If they don't match (Dashboard on a different host/FQDN, or behind a load balancer with a different public name) - edit the constant directly:
+   ```js
+   const WAZUH_DASHBOARD_BASE_URL = 'https://your-actual-dashboard-host-or-fqdn';
+   ```
+   Save `public/index.html`, refresh the browser (no service restart needed, it's a static frontend file), and confirm the navbar label now shows the value you set.
+5. Click any node's "Open in Wazuh Discover" link to do a final end-to-end check - it should land you on a Discover search already scoped to that process.
+
+If your Dashboard has no valid HTTPS certificate for the hostname WPTV detects (e.g. you access it by IP but its certificate is issued for a different FQDN), the generated link may trigger a browser certificate warning even though the query itself is correct - that's a certificate/PKI concern on the Dashboard side, unrelated to WPTV.
 
 ## Service Management (SystemD)
 To ensure WPTV starts automatically and remains highly available, use the provided SystemD configuration.
@@ -107,6 +150,8 @@ HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Eve
 
 ## WPTV Demo
 ![WPTV Demo](img/wptv_demo.gif)
+
+Sped up ~6x from the original 102-second recording (real time from launch to the Discover pivot). Full-speed video: [`img/WPTV_-_demo.mp4`](img/WPTV_-_demo.mp4).
 
 ![Screenshot](img/wptv.png)
 
