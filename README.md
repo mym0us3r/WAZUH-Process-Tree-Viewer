@@ -41,7 +41,7 @@ WPTV's Sysmon correlation only surfaces data that Wazuh actually writes to `aler
 
 A full technical report documenting the development, the Sysmon correlation architecture, the adversarial simulation methodology used for validation, and the ruleset bugs above is available at `docs/WPTV_Relatorio_Tecnico_PT.docx` (Brazilian Portuguese).
 
-🛠️ Installation & Setup
+## Installation & Setup
 
 ## 1. Directory Structure
 We recommend deploying the plugin within the Wazuh dashboard directory:
@@ -97,7 +97,6 @@ WantedBy=multi-user.target
 
 ## Usage Guide
 HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Event ID 4688, and that Sysmon is installed and forwarding to the same channel if you want the correlation features.
-> Setup guide (Event ID 4688): https://medium.com/@k1sh/habilitando-e-monitorando-a-auditoria-de-cria%C3%A7%C3%A3o-de-processo-com-wazuh-eventid-4688-com-o-7893524baff5
 
 * Access the tool via browser: `https://<YOUR_WAZUH_IP>:5000`
 * Enter **one** of: Agent ID, Host, or IP (e.g. `?agent_id=009`, `?host=LABDESK`, or `?ip=192.168.1.3`).
@@ -107,7 +106,9 @@ HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Eve
 * Click the Discover link in the panel to pivot directly into Wazuh Discover with the exact query for that event.
 
 ## WPTV Demo
-https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer/blob/main/img/WAZUH%20-%20Process%20Tree%20Viewer.mp4
+![WPTV Demo](img/wptv_demo.gif)
+
+Sped up ~6x from the original 102-second recording (real time from launch to the Discover pivot). Full-speed video: [`img/WPTV_-_demo.mp4`](img/WPTV_-_demo.mp4).
 
 ## Special Thanks
 
