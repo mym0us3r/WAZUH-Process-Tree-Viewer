@@ -108,7 +108,6 @@ HEY! Ensure Audit Process Creation is enabled on Windows targets to generate Eve
 ## WPTV Demo
 ![WPTV Demo](img/wptv_demo.gif)
 
-Sped up ~6x from the original 102-second recording (real time from launch to the Discover pivot). Full-speed video: [`img/WPTV_-_demo.mp4`](img/WPTV_-_demo.mp4).
 
 ## Special Thanks
 
