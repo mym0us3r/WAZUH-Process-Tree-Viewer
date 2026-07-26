@@ -1,0 +1,19 @@
+[Unit]
+Description=Wazuh Process Tree Viewer (WPTV)
+After=network.target
+
+[Service]
+Type=simple
+User=wazuh-dashboard
+WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
+# Wazuh Indexer credentials (WPTV_INDEXER_*) - see wptv.env.example.
+# Mode 600, owned by wazuh-dashboard, never committed to git.
+EnvironmentFile=/etc/wazuh-process-tree/wptv.env
+# Production WSGI server (gunicorn) - not Flask's built-in dev server.
+ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 server:app
+# Delay before restart, to avoid systemd's start-limit-hit failure on rapid crash loops
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
