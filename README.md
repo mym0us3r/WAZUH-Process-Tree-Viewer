@@ -9,7 +9,7 @@ WAZUH Process Tree Viewer (WPTV) is a high-performance forensic visualization to
 > OpenSearch Dashboards: 2.19.3
 > Companion Sysmon ruleset (recommended): [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs)
 
-![WPTV Main Dashboard](img/wazuh_process_tree_viewer.png)
+![WPTV Main Dashboard](img/wptv2.png)
 
 ## Project Architecture & File Structure
 
@@ -202,6 +202,40 @@ tail -f /var/log/wazuh-process-tree/wptv.log # Real-time log
 | **Alerts** | Timeline of every Wazuh rule that fired for this process - level, description, MITRE tactic/technique, EID, timestamp. Badge turns red when detections exist. |
 | **Relations** | ASCII process lineage tree + Sysmon EID 3 network connections |
 | **Detections** | Sysmon EID 1 (hashes, ProcessGuid, integrity), EID 7 (loaded DLLs), EID 11 (created files). Each section labeled with its source EID and a direct Discover link. |
+
+## Screenshots
+
+### EID 17/18 - Named Pipe C2 Detection (CRITICAL)
+
+PowerShell creating known Cobalt Strike named pipes (`\\MSSE-1`, `\\postex_`, `\\status_`) detected via Sysmon EID 17 at level 12, MITRE T1071.001 · T1021.002. The Detections tab surfaces all three pipe events simultaneously with direct Discover links per EID.
+
+![Named Pipe C2 Detection](img/c2_named_pipe.png)
+
+---
+
+### EID 24 - ClickFix (T1204.004) via Clipboard Change
+
+Chrome.exe triggering 15 Sysmon EID 24 (Clipboard Change) detections in under 5 minutes - rule 92751 level 8. Each event is individually linked to Discover. This is the classic ClickFix pattern: browser copies attacker-controlled payload into clipboard expecting the user to paste it into a Run/Terminal prompt.
+
+![ClickFix Clipboard Detection](img/ps-clickfix.png)
+
+---
+
+### Post-Exploitation Reconnaissance
+
+PowerShell spawning `net.exe`, `net1.exe`, `netstat.exe`, `whoami.exe`, `ipconfig.exe`, and `systeminfo.exe` in a 10-minute window. The Basic Properties panel shows `net1 localgroup administrators` as the command line - a direct indicator of privilege enumeration (T1069.001).
+
+![Post-Exploitation Reconnaissance](img/ps-netlocgroup.png)
+
+---
+
+### PowerShell Spawning PowerShell (T1059.001)
+
+Multiple PowerShell child instances created by a parent PowerShell - rule 92027, Sysmon EID 1, MITRE T1059.001 level 4. Tooltip in-graph shows USER, HOST, TIME, and RULE ID without needing to open the panel.
+
+![PowerShell Spawned PowerShell](img/ps-spawned.png)
+
+---
 
 ## WPTV Demo
 ![WPTV Demo](img/wptv_demo.gif)
