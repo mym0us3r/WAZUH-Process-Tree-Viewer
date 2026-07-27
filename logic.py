@@ -6,10 +6,11 @@ import time as _time
 from datetime import datetime, timedelta, timezone
 import dateutil.parser
 
-# Sysmon event IDs enriched into the tree - all confirmed to have real data
-# volume on this deployment (checked via a raw eventID count against the
-# actual alerts.json). Other Sysmon IDs (8, 10, 13, 20) exist as rules but
-# had zero hits when checked, so nothing was built around them.
+# Sysmon event IDs with dedicated enrichment handlers that populate
+# specific panel sections (hashes, DLLs, files, network connections).
+# All other Sysmon EIDs (6, 8, 9, 10, 13, 17, 18, 20, 24, 25, 29) are
+# covered by SYSMON_ALL_DETECTION_EIDS below and surface in the Alerts
+# tab with rule description, level, and MITRE mapping.
 SYSMON_PROCESS_CREATE = '1'
 SYSMON_IMAGE_LOAD     = '7'
 SYSMON_FILE_CREATE    = '11'
@@ -21,10 +22,10 @@ logger = logging.getLogger('wptv.logic')
 ENRICHMENT_EVENT_IDS = (SYSMON_PROCESS_CREATE, SYSMON_IMAGE_LOAD, SYSMON_FILE_CREATE, SYSMON_NETWORK)
 
 # ALL Sysmon EIDs that carry Wazuh detection rules and must populate the
-# Detections tab, even when there is no dedicated panel section for them.
-# Fix: EID 24 (Clipboard Change / ClickFix T1204.004) was silently discarded
-# because it was not in ENRICHMENT_EVENT_IDS - it fired rule 92751 in the
-# Indexer but never reached sysmon_detections in WPTV.
+# Alerts/Detections tabs. EIDs not listed in ENRICHMENT_EVENT_IDS (1/3/7/11)
+# have no dedicated panel section (hashes, DLLs, files, connections) but
+# their rule metadata (ID, level, description, MITRE) is still collected and
+# shown in the Alerts tab with a direct Discover link per event.
 # Source: Native Sysmon Rewrite by m0us3r (Unified-Sysmon-Configs ruleset)
 SYSMON_ALL_DETECTION_EIDS = frozenset({
     '1',  # EID  1  - Process Creation
@@ -47,11 +48,8 @@ SYSMON_ALL_DETECTION_EIDS = frozenset({
 class ProcessTreeLogic:
     def __init__(self):
         self.log_path = "/var/ossec/logs/alerts/alerts.json"
-        # Analyst notes attached to a specific (agent scope, pid) pair during
-        # triage. Stored as a flat JSON file next to the app - this is a
-        # single-manager internal tool, not a multi-tenant service, so a file
-        # with last-write-wins is an acceptable tradeoff over standing up a
-        # database for what is essentially a shared scratchpad.
+        # Analyst notes stored as a flat JSON file - last-write-wins is
+        # acceptable for an internal tool without concurrent write contention.
         self.comments_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'comments_store.json')
 
     def _resolve_range(self, hours_back=None, start=None, end=None):
@@ -467,11 +465,8 @@ class ProcessTreeLogic:
         endpoint - at least one is required. Host is matched against
         data.win.system.computer (the hostname reported inside the Windows event
         itself), not agent.name - agent.name is Wazuh's cached registration name
-        for the agent, which goes stale if the endpoint is renamed or the agent
-        is reinstalled without matching the new hostname (this happened on this
-        deployment: agent.name still said "DELL" after the host was renamed to
-        "LABDESK"). data.win.system.computer always reflects the actual current
-        Windows hostname at event time.
+        and goes stale if the endpoint is renamed without re-registering the agent.
+        data.win.system.computer always reflects the actual current Windows hostname.
 
         Kept as a standalone method (on top of fetch_events_and_enrichment)
         only for any external/future caller that needs 4688 events without
@@ -626,12 +621,8 @@ class ProcessTreeLogic:
             'sysmon_image': sysmon_enrichment.get('sysmon_images', {}).get(dec_pid),
         }
 
-    # Muted, analyst-tool palette - replaces the earlier saturated
-    # blue/orange/gray scheme. ENRICHED_BORDER acts as a "has correlated
-    # Sysmon telemetry" badge (thicker gold border), independent of the
-    # node's own fill color - similar in spirit to VirusTotal Graph's
-    # detection badges, but built from data WPTV already correlates
-    # (Sysmon EventID 1/3/7/11), not a cosmetic addition.
+    # ENRICHED_BORDER (gold, thicker) signals correlated Sysmon telemetry
+    # on a node, independent of its fill color.
     PALETTE = {
         'observed_bg': '#2c6e8c', 'observed_border': '#1b4a5e',
         'highlight_bg': '#b8722c', 'highlight_border': '#7a4a17',
