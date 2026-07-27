@@ -6,11 +6,20 @@ import time as _time
 from datetime import datetime, timedelta, timezone
 import dateutil.parser
 
-# Sysmon event IDs with dedicated enrichment handlers that populate
-# specific panel sections (hashes, DLLs, files, network connections).
-# All other Sysmon EIDs (6, 8, 9, 10, 13, 17, 18, 20, 24, 25, 29) are
-# covered by SYSMON_ALL_DETECTION_EIDS below and surface in the Alerts
-# tab with rule description, level, and MITRE mapping.
+# ── Sysmon EID groupings ────────────────────────────────────────────────────
+#
+# ENRICHMENT_EVENT_IDS  (EID 1, 3, 7, 11)
+#   Dedicated panel sections: EID 1 → hashes/integrity, EID 3 → network
+#   connections, EID 7 → loaded DLLs, EID 11 → created files.
+#
+# SYSMON_ALL_DETECTION_EIDS  (EID 1, 3, 6, 7, 8, 9, 10, 11, 13, 17, 18, 20, 24, 25, 29)
+#   Every Sysmon EID that carries a Wazuh detection rule. All of them
+#   surface in the Alerts tab (rule ID, level, description, MITRE, Discover
+#   link). EIDs not in ENRICHMENT_EVENT_IDS have no dedicated panel section
+#   but their rule metadata is still fully collected.
+#
+# Source: Native Sysmon Rewrite by m0us3r (Unified-Sysmon-Configs)
+# ────────────────────────────────────────────────────────────────────────────
 SYSMON_PROCESS_CREATE = '1'
 SYSMON_IMAGE_LOAD     = '7'
 SYSMON_FILE_CREATE    = '11'
@@ -18,15 +27,8 @@ SYSMON_NETWORK        = '3'
 
 logger = logging.getLogger('wptv.logic')
 
-# EIDs with dedicated enrichment handlers (panel sections: hashes, DLLs, files, connections)
 ENRICHMENT_EVENT_IDS = (SYSMON_PROCESS_CREATE, SYSMON_IMAGE_LOAD, SYSMON_FILE_CREATE, SYSMON_NETWORK)
 
-# ALL Sysmon EIDs that carry Wazuh detection rules and must populate the
-# Alerts/Detections tabs. EIDs not listed in ENRICHMENT_EVENT_IDS (1/3/7/11)
-# have no dedicated panel section (hashes, DLLs, files, connections) but
-# their rule metadata (ID, level, description, MITRE) is still collected and
-# shown in the Alerts tab with a direct Discover link per event.
-# Source: Native Sysmon Rewrite by m0us3r (Unified-Sysmon-Configs ruleset)
 SYSMON_ALL_DETECTION_EIDS = frozenset({
     '1',  # EID  1  - Process Creation
     '3',  # EID  3  - Network Connection
