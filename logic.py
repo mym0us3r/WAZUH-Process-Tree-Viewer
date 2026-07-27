@@ -19,6 +19,7 @@ import dateutil.parser
 #   but their rule metadata is still fully collected.
 #
 # Source: Native Sysmon Rewrite by m0us3r (Unified-Sysmon-Configs)
+#         https://github.com/mym0us3r/Unified-Sysmon-Configs
 # ────────────────────────────────────────────────────────────────────────────
 SYSMON_PROCESS_CREATE = '1'
 SYSMON_IMAGE_LOAD     = '7'
