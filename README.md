@@ -237,11 +237,6 @@ Multiple PowerShell child instances created by a parent PowerShell - rule 92027,
 
 ---
 
-## WPTV Demo
-![WPTV Demo](img/wptv_demo.gif)
-
-Sped up ~6x from the original 102-second recording (real time from launch to the Discover pivot). 
-
 ## Special Thanks
 
 I would like to extend my sincere gratitude to **AwwalQuan** for their invaluable support, guidance, and contributions during the development of this project. And also to the **Wazuh Community** for providing an amazing open-source platform for security research.
@@ -253,7 +248,6 @@ This project is under active development and will continue to evolve. The destin
 ## Contributors
 
 [@AwwalQuan](https://github.com/AwwalQuan)
-
 [@wazuh](https://github.com/wazuh)
 
 ## License
