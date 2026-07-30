@@ -76,4 +76,3 @@
 
 - New technical report: `docs/WPTV_Relatorio_Tecnico_PT.docx` (Brazilian Portuguese).
 - README rewritten; added "Companion Sysmon Ruleset" section and this changelog.
-- Demo: linked `.mp4` replaced with embedded GIF (`img/wptv_demo.gif`, sped up ~6x).
