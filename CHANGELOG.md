@@ -72,7 +72,4 @@
 - Found and fixed a missing `-enc` abbreviation in the PowerShell Base64-encoded-command detection (rules `92057`/`92059`/`92071`).
 - Found and documented (not yet fixed) a missing end-of-string anchor in rule `92213`, which misclassifies legitimate `.json` files as executables.
 
-### Documentation
 
-- New technical report: `docs/WPTV_Relatorio_Tecnico_PT.docx` (Brazilian Portuguese).
-- README rewritten; added "Companion Sysmon Ruleset" section and this changelog.
