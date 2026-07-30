@@ -1,54 +1,42 @@
 # Changelog
 
-## v2.1 - 2026-07-26
-
-### Search & Correlation
-
-- **Sysmon EID coverage expanded from 4 to 15 event types**: previously only EIDs `{1, 3, 7, 11}` were correlated - all others were silently discarded even when they generated Wazuh alerts in the Indexer. Root cause: `ENRICHMENT_EVENT_IDS` was the only gate for any Sysmon processing. Added `SYSMON_ALL_DETECTION_EIDS` covering all 15 detection-capable EIDs from the Native Sysmon Rewrite ruleset; `sysmon_detections` collection now runs for every EID in this set, while the dedicated panel enrichment handlers (hashes, DLLs, files, connections) still run only for EIDs 1/3/7/11.
-- **New EIDs now visible in the Alerts tab**: EID 6 (Driver Load / BYOVD), EID 8 (CreateRemoteThread / injection), EID 9 (Raw Access Read / credential access), EID 10 (Process Access / LSASS), EID 13 (Registry Value Set / persistence), EID 17/18 (Pipe Events / Cobalt Strike C2), EID 20 (WmiEvent Consumer / persistence), EID 24 (Clipboard Change / ClickFix T1204.004 - rule 92751), EID 25 (Process Tampering / hollowing), EID 29 (File Executable Detected / PE drop).
-- **Wazuh Indexer as primary data source**: WPTV now queries the Wazuh Indexer (OpenSearch `wazuh-alerts-*`) directly instead of scanning `alerts.json`. Performance: 1.8 s for a 5-minute window vs. ~62 s with file scanning (34x faster). Activated when `WPTV_INDEXER_URL` is set in `wptv.env`; automatic fallback to file scan if the Indexer is unavailable. Credentials stored in `/etc/wazuh-process-tree/wptv.env` (mode 600, owned by `wazuh-dashboard`); TLS verified against the Indexer's root CA.
-- **Log rotation bug fixed** (`_iter_log_paths`): when the Wazuh Manager restarts mid-day, `alerts.json` is rotated to `ossec-alerts-DD.json` and a new live file begins. The old code only checked the live file for the current day, making "Last 5 Hours" and "Last 5 Minutes" return 0 results whenever a restart had occurred. Fix: for the current day, both `alerts.json` (post-restart events) and `ossec-alerts-DD.json` (pre-restart events) are now checked.
-- **Wazuh Indexer - read-only access**: dedicated `wptv_svc` user with role `wptv_reader` scoped to `wazuh-alerts-*`. Write attempts return 403 (confirmed).
+## v2.1 - 2026-07-30
 
 ### UI / UX
 
-- **Alerts tab**: new tab in the side panel showing a timeline of every Wazuh detection rule that fired for the selected process - rule ID, level, description, MITRE tactic/technique, EventID source, and timestamp. Tab badge turns red and panel switches to this tab automatically when detections exist.
-- **Creation-order numbering (BFS per subtree)**: each node now shows its creation-order number inside the circle. Parent Process is always #1 in its subtree; observed child processes receive #2, #3... in chronological order of creation. Numbering runs independently per connected component (each root starts at #1), so multiple independent process trees on the same graph each have their own sequence. Numbers are permanent: they survive double-click coloring, expand, and background clicks. Implementation: backend BFS assigns `meta.order` and sets the label; `reapplyLabels()` on the frontend normalises every label to `"N\nname"` after any dataset update.
-- **Labels without PID**: node labels now show only the creation-order number and process name (e.g. `2\nchrome.exe`). PID remains visible in the Basic Properties tab of the side panel. `reapplyLabels()` also normalises nodes added via expand (which arrive from the backend with a PID in their label) to the same no-PID format.
-- **Parent Process tooltip format**: changed from `"Parent process (outside queried range) - name"` to `"PARENT PROCESS - name - HOST - USER"`, using context extracted from the referencing child's 4688 event.
-- **Uniform node sizes**: `shape: 'circle'` with `widthConstraint: { minimum: 70, maximum: 70 }` forces all nodes to the same diameter regardless of label length.
-- **Resizable side panel**: a 5 px drag handle between the graph and the detail panel allows the analyst to adjust the split during an investigation.
-- **Graph centering**: replaced `zoomToFitPositions()` with `network.once('afterDrawing', () => network.fit())`, which runs after the first render tick when node positions are finalised.
-- **Double-click behaviour**: double-clicking a node now colors its entire subtree (descendants) blue. `reapplyLabels()` is called after coloring to prevent labels from reverting.
-- **Background click**: clicking empty canvas restores all parent nodes to yellow, children to gray, and number labels to their correct format.
-- **Detections tab placeholder**: updated to `"Sysmon Telemetry (EID 1 to 29): Correlated for this process in the queried window are shown under the Relations tab."`.
-- **Status bar simplified**: `"Loaded in XXXms (XXX nodes)"`. Zero-node result now shows `"loaded in XXXms (0 processes found) — no EventID 4688 events in the selected time window. Try a wider range."`.
-- **Removed**: `"Process not observed within the queried time range - no user/host/rule data available."` from the Basic Properties tab.
+- **LR tree layout (mind-map style)**: replaced the radial layout (`computeRadialTreeLayout`) with a left-to-right hierarchical layout (`computeLRTreeLayout`). Each independent subtree is positioned in a 3-column grid so multiple process trees spread across the screen instead of stacking vertically. Layout uses a memoised Reingold-Tilford algorithm (O(N) with `heightCache`) to handle graphs with 2000+ nodes without freezing the browser.
+- **Rectangular box nodes**: `shape: 'circle'` replaced with `shape: 'box'`. Labels show process name and PID on separate lines. Node width capped at 280 px so long paths wrap cleanly.
+- **Fixed colour scheme**: colours are now permanent and never altered by mouse interactions.
+  - **Parent Process → red** (`#b91c1c`, white text) - immediately identifiable as the tree root at a glance, always.
+  - **Selected child/grandchild → blue** (`#1d4ed8`, white text) - single click; cleared on next click or background click.
+  - **Unselected children/grandchildren → gray** (`#4b5563`) - neutral baseline.
+- **+MORE / -LESS pagination**: parent nodes with more than 10 direct children collapse the excess behind a red `+N MORE` circle. Double-click the MORE node to expand all hidden children (shown in place, anchored at the MORE node position); double-click again to collapse. Grandchildren of hidden nodes are recursively hidden so no orphan nodes are left floating on screen.
+- **Right-click → Filter tree**: right-clicking any node shows a context menu with "Filter only: `<root name>`". All other trees are hidden and a **← SHOW ALL** button appears in the toolbar to restore them. Canvas native "Save image" context menu is suppressed.
+- **← SHOW ALL toolbar button**: appears only when a tree is filtered; clicking it restores all process trees and hides the button.
+- **ANALYZE button**: renamed from "ANALYZE AGENT". Enter key in any input field (Agent ID, Host, IP, Filter) also triggers analysis.
+- **EXPORT ▾ dropdown**: replaces the single "EXPORT PNG" button. Options:
+  - **Export PNG (HD)**: captures the graph at 3× resolution for use in documents and reports.
+  - **Export PDF**: generates a PDF with a styled header and a full process inventory table (order, name, PID, user, command line, alert count).
+- **Status bar (left-aligned)**: `PROCESSES: X | AGENT: 009 | UPDATED: HH:MM:SS  (Loaded in Xms - X nodes)`. "Loaded in" moved from the right side to inline with the process count.
+- **Panel title**: static "WPTV — Process Details" header above the detail panel at all times.
+- **Tabs reduced to 3**: side panel now shows only **Basic Properties**, **Alerts**, and **Detections**. Relations and Comments tabs removed.
+- **Subtree drag — dual mode**:
+  - **Parent Process (root node) drag**: moves the entire subtree (parent + all children + MORE node + expanded MORE children). Default mode.
+  - **Double-click Parent Process → SOLO MODE**: border turns white to indicate mode; subsequent drag moves only the parent node independently, allowing the analyst to reposition it closer to or further from its subtree. Double-click again to return to tree-drag mode.
+  - **Child/grandchild drag**: always moves only that individual node freely (no descendants follow), so nodes can be rearranged within the tree.
+- **Ghost nodes** (Sysmon-only processes): processes that have Sysmon activity within the queried window but no EID 4688 (born before the window) appear as green-bordered nodes, making previously invisible processes visible.
 
-### Backend
+### Bug Fixes
 
-- **`_win_basename()` static method**: replaces `os.path.basename()` which only splits on `/` on Linux, returning full Windows paths as-is. `_win_basename()` always splits on `\`.
-- **`_parse_latest()` rewritten** with a two-pass approach: first pass accumulates all events per PID; second pass consolidates detections (de-duplicated by rule ID, sorted by level descending, generic process rules filtered). `_make_node()` and `_make_synthetic_parent()` now include `detections` and `badgeCounts` in `meta`.
-- **`_make_synthetic_parent()`**: accepts `host` and `user` parameters from the child's 4688 event. Sets `meta.order = 1` directly so `reapplyLabels()` can restore the label even when the node is returned by `expand_node` (which does not run BFS).
-- **`_time_delta_label()`**: computes human-readable elapsed time between parent and child spawn timestamps for edge labels (`622ms`, `4s`, `3m 30s`).
-- **`_fetch_from_indexer()`**: new method. POST to `$WPTV_INDEXER_URL/wazuh-alerts-*/_search` with agent identity filter and time range. Returns raw alert documents in the same shape as `alerts.json` lines, so processing code is shared between both paths.
-- **`expand_node()` timing**: `t0 = _time.monotonic()` was missing, causing `NameError: name 't0' is not defined` on every expand request. Fixed.
-
-### Production & Observability
-
-- **Structured logging**: `logging.getLogger('wptv')` and `logging.getLogger('wptv.logic')` with `RotatingFileHandler` at `/var/log/wazuh-process-tree/wptv.log` (5 MB, 5 backups). Logging level forced to `DEBUG` on the root logger before handlers are added, overriding gunicorn's pre-initialisation at `WARNING`.
-- **Per-request log entries**: identity, time window with span, Indexer hit count, 4688/sysmon event split, tree build timing, node/edge counts, expand PID and result count.
-- **systemd service**: `EnvironmentFile=/etc/wazuh-process-tree/wptv.env` added to inject Indexer credentials at start.
-
-### Sysmon Ruleset (companion project)
-
-- Migrated from Sysmon64.exe v15.21 (Sysinternals) to native Sysmon via DISM (schema 4.91). Confirmed via EID 16: SHA256 of applied config matched `sysmon-native.xml`.
-- Added detection rule **92111** (level 10, MITRE T1571): Sysmon EID 3 from PowerShell to known C2 ports (4444/8080/8888/9001/31337). Validated end-to-end with `c2_beacon_simulation.ps1` against `beacon_listener.py` on Kali GNU/Linux 2026.1.
+- **`TypeError: Cannot read properties of null`** on ANALYZE click: `detailConnections`, `detailRelations`, `relationsEmpty`, `commentsList`, `commentsEmpty`, `commentInput`, and `commentSubmitBtn` elements were removed from the HTML alongside their tabs but JavaScript references to them were left in `loadTree()`, `showDetailPanel()`, and `showNetworkNodeInfo()`. All `getElementById()` calls to removed elements now removed.
+- **`network.once()` called before network creation**: `applyChildrenPagination()` was inserted before `network = new vis.Network(...)`, causing `Cannot read properties of null (reading 'once')`. Moved after network creation and event registration.
+- **MORE node positioned at graph origin**: MORE nodes were added to `nodesDataset` without explicit `x`/`y` coordinates. `vis.DataSet.add()` without coordinates defaults to `(0, 0)`, so expanded children appeared at the graph origin instead of near the parent. Fixed by querying `network.getPosition(lastVisibleChildId)` after network creation and setting `x`/`y` on the MORE node accordingly.
+- **`computeLRTreeLayout` O(N²) freeze**: `subtreeH()` recomputed the height of every descendant for every ancestor without caching, resulting in O(N²) recursive calls on large graphs (e.g. 2051 nodes). Added `heightCache` dictionary; each node's height is computed once and reused, reducing to O(N) total calls.
+- **Orphan nodes after MORE pagination**: `applyChildrenPagination` removed direct hidden children but not their descendants, leaving grandchildren as disconnected nodes. Fixed with `collectSubtree()` BFS that recursively collects all descendants before removal.
 
 ### Documentation
 
-- Technical report updated: `docs/WPTV_Relatorio_Tecnico_PT.docx` (v2.1, Brazilian Portuguese).
-- README updated to v2.1.
+- README updated to v2.1: removed "What's New" historical sections, updated Graph Interactions and Understanding the Graph tables, updated detail panel tab list.
 - CHANGELOG updated.
 
 ---
