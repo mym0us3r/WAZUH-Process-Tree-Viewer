@@ -1464,8 +1464,9 @@ function showDetailPanel(nodeId) {
 
             const mitreIds = d.mitre && d.mitre.id
                 ? (Array.isArray(d.mitre.id) ? d.mitre.id : [d.mitre.id]).join(' · ') : '';
-            const link = discoverUrl
-                ? `<a href="${discoverUrl}" target="_blank" rel="noopener"
+            const safeUrl1 = discoverUrl ? discoverUrl.replace(/"/g, '&quot;') : '';
+            const link = safeUrl1
+                ? `<a href="${safeUrl1}" target="_blank" rel="noopener"
                       style="color:#00a0d1;font-size:10px;text-decoration:none;">
                      Open EID ${d.eventId} in Discover &#8594;</a>` : '';
 
@@ -1727,16 +1728,202 @@ function showAllTrees() {
 }
 
 // ═══ Export helpers ═══════════════════════════════════════════════════════
-function exportHighQuality(){
-    const cv=document.querySelector('#mynetwork canvas');if(!cv) return;
-    const S=3,hq=document.createElement('canvas');
-    hq.width=cv.width*S;hq.height=cv.height*S;
-    const ctx=hq.getContext('2d');ctx.scale(S,S);ctx.drawImage(cv,0,0);
-    const a=document.createElement('a');
-    a.href=hq.toDataURL('image/png',1.0);
-    a.download='WPTV_'+(document.getElementById('agentInput').value.trim()||'agent')+'_'+new Date().toISOString().slice(0,10)+'.png';
-    a.click();
+
+// EXPORT PDF:
+// - Node selected  → detailed report for that node's branch (generateParentProcessReport)
+// - Nothing selected → full report of all trees loaded in this time range (generateFullReport)
+async function exportAsPdf() {
+    if (typeof window.jspdf === 'undefined') {
+        alert('PDF library did not load. Check your internet connection (jsPDF loads from CDN) and try again.');
+        return;
+    }
+    if (!nodesDataset || nodesDataset.length === 0) {
+        alert('No processes loaded. Run ANALYZE first.');
+        return;
+    }
+    if (currentDetailNodeId) {
+        await generateParentProcessReport(currentDetailNodeId);
+    } else {
+        await generateFullReport();
+    }
 }
+
+async function generateFullReport() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+    const marginX = 40;
+    const pageWidth  = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - marginX * 2;
+
+    const agentId = document.getElementById('agentInput').value.trim() || 'N/A';
+    const rangeEl = document.getElementById('timeRange');
+    const range   = rangeEl ? rangeEl.options[rangeEl.selectedIndex]?.text || rangeEl.value : 'N/A';
+    const total   = document.getElementById('statTotal')?.innerText || '0';
+
+    // Cover page
+    doc.setFillColor(15, 34, 54);
+    doc.rect(0, 0, pageWidth, 90, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(0, 169, 224);
+    doc.text('WAZUH Process Tree Viewer', marginX, 38);
+    doc.setFontSize(12);
+    doc.setTextColor(168, 216, 240);
+    doc.text('Threat Hunting & Incident Response — Full Process Report', marginX, 58);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 143, 168);
+    doc.text(`Agent: ${agentId}  |  Time Range: ${range}  |  Total Processes: ${total}  |  Generated: ${new Date().toLocaleString()}`, marginX, 78);
+
+    // Build children map and find roots
+    const hasIncoming = new Set();
+    edgesDataset.forEach(e => hasIncoming.add(e.to));
+    const childMap = {};
+    edgesDataset.forEach(e => { if (!childMap[e.from]) childMap[e.from] = []; childMap[e.from].push(e.to); });
+
+    const roots = [];
+    nodesDataset.forEach(n => {
+        if (n.meta && !n.meta.isNetworkNode && !n.meta.isMoreNode && !hasIncoming.has(n.id)) {
+            roots.push(n);
+        }
+    });
+
+    function collectTree(rootId) {
+        const result = [], queue = [{ id: rootId, depth: 0 }], seen = new Set();
+        while (queue.length) {
+            const { id, depth } = queue.shift();
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const n = nodesDataset.get(id);
+            if (!n || n.meta?.isNetworkNode || n.meta?.isMoreNode) continue;
+            result.push({ id, depth, node: n });
+            (childMap[id] || []).forEach(c => queue.push({ id: c, depth: depth + 1 }));
+        }
+        return result;
+    }
+
+    // Cover page — header already written above; now capture the current graph
+    const canvas = document.querySelector('#mynetwork canvas');
+    if (canvas) {
+        try {
+            // Fit the network to show all trees before capturing
+            if (network) network.fit({ animation: false });
+            // Small delay to ensure the fit is rendered
+            await new Promise(resolve => setTimeout(resolve, 120));
+            const cvs = document.querySelector('#mynetwork canvas');
+            const imgData = cvs.toDataURL('image/png', 1.0);
+            const maxH = pageHeight - 115;
+            const ratio = cvs.width / cvs.height;
+            const imgW = Math.min(contentWidth, maxH * ratio);
+            const imgH = imgW / ratio;
+            const imgX = marginX + (contentWidth - imgW) / 2;
+            doc.setFillColor(15, 34, 54);
+            doc.rect(marginX, 96, contentWidth, maxH, 'F');
+            doc.addImage(imgData, 'PNG', imgX, 96 + (maxH - imgH) / 2, imgW, imgH);
+        } catch (e) {
+            // Canvas tainted or unavailable — skip image, report continues without it
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor(150, 150, 150);
+            doc.text('(graph capture unavailable)', marginX, 140);
+        }
+    }
+
+    // Page 2: summary table (one row per tree)
+    doc.addPage();
+    let y = 50;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Process Trees Summary', marginX, y); y += 10;
+
+    const summaryRows = roots.map((root, i) => {
+        const tree   = collectTree(root.id);
+        const name   = root.meta?.name || root.label?.split('\n')[0] || root.id;
+        const host   = tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const alerts = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
+        return [i + 1, name, host, tree.length, alerts > 0 ? `⚠ ${alerts}` : '–'];
+    });
+
+    doc.autoTable({
+        startY: y + 6,
+        head: [['#', 'Parent Process', 'Host', 'Processes', 'Alerts']],
+        body: summaryRows,
+        margin: { left: marginX, right: marginX },
+        styles: { fontSize: 9, cellPadding: 5 },
+        headStyles: { fillColor: [15, 34, 54], textColor: 255 },
+        columnStyles: { 4: { textColor: [185, 28, 28], fontStyle: 'bold' } },
+    });
+
+    // One detailed page per tree
+    roots.forEach((root, ri) => {
+        const tree     = collectTree(root.id);
+        const rootName = root.meta?.name || root.label?.split('\n')[0] || root.id;
+        const host     = tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const totalAl  = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
+
+        doc.addPage();
+        y = 50;
+
+        // Red header bar
+        doc.setFillColor(185, 28, 28);
+        doc.rect(marginX, y - 16, contentWidth, 24, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`[${ri + 1}] PARENT PROCESS: ${rootName}   |   Host: ${host}   |   ${tree.length} processes   |   ${totalAl > 0 ? '⚠ ' + totalAl + ' alerts' : 'No alerts'}`, marginX + 8, y + 2);
+        y += 22;
+
+        const tableRows = tree.map(({ id, depth, node: n }) => {
+            const m          = n.meta || {};
+            const indent     = '  '.repeat(depth) + (depth > 0 ? '└ ' : '');
+            const parentEdge = edgesDataset.get({ filter: e => e.to === id })[0];
+            const parentNode = parentEdge ? nodesDataset.get(parentEdge.from) : null;
+            const parentName = parentNode?.meta?.name || '(root)';
+            const alerts     = m.detections?.length || 0;
+            const cmd        = m.cmd ? (m.cmd.length > 90 ? m.cmd.slice(0, 87) + '...' : m.cmd) : 'N/A';
+            return [
+                m.order != null ? m.order : '',
+                indent + (m.name || n.label?.split('\n')[0] || id),
+                m.pid || 'N/A',
+                parentName,
+                m.user || 'N/A',
+                alerts > 0 ? `⚠ ${alerts}` : '–',
+                cmd
+            ];
+        });
+
+        doc.autoTable({
+            startY: y,
+            head: [['#', 'Process', 'PID', 'Parent', 'User', 'Alerts', 'Command Line']],
+            body: tableRows,
+            margin: { left: marginX, right: marginX },
+            styles: { fontSize: 7.5, cellPadding: 3.5, overflow: 'linebreak' },
+            headStyles: { fillColor: [30, 58, 95], textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 22 },
+                2: { cellWidth: 55 },
+                5: { cellWidth: 40, textColor: [185, 28, 28], fontStyle: 'bold' },
+                6: { cellWidth: 215 },
+            },
+        });
+    });
+
+    // Footer
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7.5);
+        doc.setTextColor(130, 130, 130);
+        doc.text(
+            `WPTV v2.1  |  Agent ${agentId}  |  ${range}  |  Page ${i} of ${pages}  |  github.com/mym0us3r/WAZUH-Process-Tree-Viewer`,
+            pageWidth / 2, pageHeight - 12, { align: 'center' }
+        );
+    }
+
+    doc.save(`WPTV_${agentId}_${range.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+
 
 async function loadTree() {
     const identityParams = buildIdentityParams();
