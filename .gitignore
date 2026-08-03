@@ -1,3 +1,20 @@
+# WPTV - credentials and environment
+wptv.env
+*.env
+
+# WPTV - certificates (environment-specific, never distribute)
+*.pem
+*.key
+*.crt
+
+# WPTV - runtime data
+comments_store.json
+/var/log/wazuh-process-tree/
+
+# WPTV - plugin build artifacts (keep only pre-built bundle)
+wptv_plugin/node_modules/
+wptv_plugin/.cache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
