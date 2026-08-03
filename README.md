@@ -4,7 +4,7 @@ WPTV is an independent OpenSearch Dashboards UI Plugin and forensic backend that
 
 WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry into interactive, draggable process trees - enabling analysts to trace process lineages during Threat Hunting and Incident Response operations. Correlated with all 15 Sysmon detection EIDs and 22 critical Windows Audit Event IDs for hashes, network connections, loaded DLLs, dropped files, clipboard changes, registry modifications, pipe events, privilege escalation, persistence, and more.
 
-> **Disclaimer:** WPTV is an independent open-source project. It is not affiliated with, endorsed by, or maintained by the Wazuh project. "Wazuh" is used solely to describe compatibility with the Wazuh platform.
+> **Disclaimer:** WPTV is an independent open-source project developed as part of my contributions to the Wazuh community through the Wazuh Ambassador Program. While it is built to integrate with and enhance the Wazuh platform, it is not an official Wazuh product and is not maintained or endorsed by the Wazuh team. The name "Wazuh" is used solely to describe compatibility with the platform.
 
 --------------------------------
 > Version: 2.1
@@ -229,12 +229,7 @@ WPTV_INDEXER_INDEX=wazuh-alerts-*
 WPTV_INDEXER_USER=wptv_svc
 WPTV_INDEXER_PASSWORD=<your_password>
 WPTV_INDEXER_CA_CERT=/etc/wazuh-process-tree/certs/root-ca.pem
-WPTV_DASHBOARD_ORIGIN=https://<your-wazuh-ip>
-WPTV_SSL_CERT=/etc/wazuh-dashboard/certs/wazuh-dashboard.pem
-WPTV_SSL_KEY=/etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem
 ```
-
-> `WPTV_SSL_CERT` and `WPTV_SSL_KEY` point to the Wazuh Dashboard TLS certificate. These are used by Gunicorn to serve the backend over HTTPS on port 5000.
 
 If `WPTV_INDEXER_URL` is not set, WPTV automatically falls back to scanning the local `alerts.json` log file at `/var/ossec/logs/alerts/alerts.json`.
 
@@ -323,9 +318,21 @@ After=network.target
 Type=simple
 User=wazuh-dashboard
 WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
+# Wazuh Indexer credentials (WPTV_INDEXER_*) - see wptv_example.env.
+# Mode 600, owned by wazuh-dashboard, never committed to git.
 EnvironmentFile=/etc/wazuh-process-tree/wptv.env
+# Production WSGI server (gunicorn) with TLS.
+# Certs reuse the Wazuh Dashboard certificate so the browser trusts HTTPS
+# on port 5000 without an extra CA import - required when WPTV is embedded
+# as an iframe inside the OSD plugin (mixed-content block otherwise).
 ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn \
-  --workers 4 --bind 0.0.0.0:5000 --timeout 120 server:app
+  --workers 4 \
+  --bind 0.0.0.0:5000 \
+  --timeout 120 \
+  --certfile /etc/wazuh-dashboard/certs/wazuh-dashboard.pem \
+  --keyfile  /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem \
+  server:app
+# Delay before restart to avoid systemd start-limit-hit on rapid crash loops.
 Restart=always
 RestartSec=5
 
@@ -359,7 +366,6 @@ wptv.logic: build_tree done in 0.256s: 4112 nodes, 4094 edges
 
 - Access via browser: `https://<YOUR_WAZUH_IP>:5443` (standalone) or `https://<YOUR_WAZUH_IP>/app/wptv` (OSD plugin)
 - Enter **one** of: Agent ID, Host, or IP. Press **Enter** or click **ANALYZE**.
-- Optionally narrow by **PROCESS FILTER** (process name) and/or **EventID** to scope the graph before loading.
 - Select the **Time Range** - presets from 5 minutes to 30 days, or a custom range (WPTV uses UTC comparison for forensic precision).
 - Optionally add a **PROCESS FILTER** by process name (e.g. `chrome.exe`) to scope the graph.
 - Optionally add an **EventID** (e.g. `1`, `3`, `24`, `4104`, `4688`) to show only trees containing nodes with that Event ID in their detections.
@@ -475,10 +481,12 @@ sha256sum /usr/share/wazuh-dashboard/plugins/wptv/target/public/wptv.plugin.js*
 | `logic.py` | `process_tree_api/` | `c89ec61585ad08e5fb81f223d935b6d3b41eae1757a391600e949a4e6db4f53d` |
 | `server.py` | `process_tree_api/` | `4682baf8fc58adce9f15e4bc4bad344891d00ef473703a5f9a166b47c4542b9b` |
 | `index.html` | `process_tree_api/public/` | `de7e7b5a64967ea9d8c3c44ccb96f35d27a54db6ac07230bff2776952f1b03b7` |
-| `wptv.plugin.js` | `plugins/wptv/target/public/` | `0156eaa0a4bf237cd99daf878337a38ff75135e9e0cca92afcac2997934daefa` |
-| `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `2bbf2ef29e72ca3f437de74ad3feb4f541861eb8b2fe98712b61ef81af08dae4` |
+| `wptv.plugin.js` | `plugins/wptv/target/public/` | `7e58f27c9a1a56752db4c58c80bac191e856a374a67e28159d8a2b62e0595888` |
+| `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `373722d0d9ff08d50fc9fe160996b18b56f65a571f315d6edaf606ce067d1ef5` |
 
 > `wptv.pem` and `wptv-key.pem` are environment-specific and are not distributed with the project. See **Section 6 - TLS Certificate** above for generation instructions.
+>
+> The `wptv.plugin.js` hash above reflects the bundle at the time of this release. If you applied the `setTimeout` height fix or the title fix, run `sha256sum wptv.plugin.js` on your server and update this table accordingly.
 
 
 ## WPTV Demo
