@@ -27,7 +27,9 @@ Both modes share the same backend and frontend. The OSD plugin embeds the standa
 
 ## Project Architecture & File Structure
 
-![Architecture](img/arq.svg)
+<p align="center">
+  <img src="img/arq.svg" alt="Project Architecture" width="900">
+</p>
 
 WPTV consists of two independent components:
 
