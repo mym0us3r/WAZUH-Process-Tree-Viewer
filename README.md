@@ -180,7 +180,34 @@ chown wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
 
 ### 5. Wazuh Indexer Credentials (recommended)
 
-WPTV queries the Wazuh Indexer directly as its primary data source. Create a read-only user in the Indexer with access to `wazuh-alerts-*`, then configure the credentials:
+WPTV queries the Wazuh Indexer directly as its primary data source. Create a dedicated read-only service user (`wptv_svc`) with access to `wazuh-alerts-*`:
+
+```bash
+# Create the role
+curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" \
+  -H "Content-Type: application/json" \
+  -u "admin:<admin_password>" \
+  -d '{
+    "index_permissions": [{
+      "index_patterns": ["wazuh-alerts-*"],
+      "allowed_actions": ["read", "indices:data/read/search"]
+    }]
+  }'
+
+# Create the user
+curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/internalusers/wptv_svc" \
+  -H "Content-Type: application/json" \
+  -u "admin:<admin_password>" \
+  -d '{"password": "<your_password>", "backend_roles": [], "attributes": {}}'
+
+# Map role to user
+curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/rolesmapping/wptv_role" \
+  -H "Content-Type: application/json" \
+  -u "admin:<admin_password>" \
+  -d '{"users": ["wptv_svc"]}'
+```
+
+Then configure the credentials:
 
 ```bash
 mkdir -p /etc/wazuh-process-tree/certs
@@ -203,28 +230,15 @@ WPTV_INDEXER_USER=wptv_svc
 WPTV_INDEXER_PASSWORD=<your_password>
 WPTV_INDEXER_CA_CERT=/etc/wazuh-process-tree/certs/root-ca.pem
 WPTV_DASHBOARD_ORIGIN=https://<your-wazuh-ip>
+WPTV_SSL_CERT=/etc/wazuh-dashboard/certs/wazuh-dashboard.pem
+WPTV_SSL_KEY=/etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem
 ```
+
+> `WPTV_SSL_CERT` and `WPTV_SSL_KEY` point to the Wazuh Dashboard TLS certificate. These are used by Gunicorn to serve the backend over HTTPS on port 5000.
 
 If `WPTV_INDEXER_URL` is not set, WPTV automatically falls back to scanning the local `alerts.json` log file at `/var/ossec/logs/alerts/alerts.json`.
 
 > **How this works:** WPTV runs on the same machine as the Wazuh Manager. All agents - regardless of how many - forward their logs to that central server. Both the Wazuh Indexer and `alerts.json` contain events from all agents; WPTV filters by Agent ID, Host, or IP at query time. No connection to individual endpoints is required.
-
-### 9. Discover Link Base URL
-
-Every node's "Open in Wazuh Discover" link is built from a JavaScript constant, `WAZUH_DASHBOARD_BASE_URL`, in the **first lines** of the `<script>` block in `public/index.html`:
-
-```js
-const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
-```
-
-**How to check if you need to change it:**
-1. Open WPTV in your browser and look at the navbar - it shows a live label: `Discover base URL: https://<detected-value>`.
-2. Compare that value against the actual URL you use to log into your Wazuh Dashboard.
-3. If they match - do nothing, it already works.
-4. If they don't match, edit the constant directly:
-   ```js
-   const WAZUH_DASHBOARD_BASE_URL = 'https://your-actual-dashboard-host-or-fqdn';
-   ```
 
 ### 6. TLS Certificate for Nginx Proxy
 
@@ -273,6 +287,23 @@ sudo bash wptv_plugin/install.sh
 The script copies the plugin, sets permissions, optionally compresses with Brotli, and restarts the dashboard. After ~30 seconds the sidebar entry appears under **Forensics - Wazuh Process Tree Viewer**.
 
 > The bundle is pre-compiled. No Node.js, npm, or TypeScript compilation required.
+
+### 9. Discover Link Base URL
+
+Every node's "Open in Wazuh Discover" link is built from a JavaScript constant, `WAZUH_DASHBOARD_BASE_URL`, in the **first lines** of the `<script>` block in `public/index.html`:
+
+```js
+const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
+```
+
+**How to check if you need to change it:**
+1. Open WPTV in your browser and look at the navbar - it shows a live label: `Discover base URL: https://<detected-value>`.
+2. Compare that value against the actual URL you use to log into your Wazuh Dashboard.
+3. If they match - do nothing, it already works.
+4. If they don't match, edit the constant directly:
+   ```js
+   const WAZUH_DASHBOARD_BASE_URL = 'https://your-actual-dashboard-host-or-fqdn';
+   ```
 
 
 ## Service Management (SystemD)
@@ -457,11 +488,11 @@ sha256sum /usr/share/wazuh-dashboard/plugins/wptv/target/public/wptv.plugin.js*
 
 Special thanks to the entire **Wazuh Community** for its continuous support and valuable feedback throughout the project's development.
 
-The author would also like to express sincere gratitude to the **Wazuh Ambassador Program** team - Katia Bukovac, Raquel Presas Salguero, and Carolina Landa - for their encouragement, trust, and continued support.
+The author would also like to express sincere gratitude to the Wazuh Ambassador Program team - Katia Bukovac, Raquel Presas Salguero, and Carolina Landa - for their encouragement, trust, and continued support.
 
-Special thanks to **Awwal Ishiaku** for his support throughout the development process, and to **William Weber** for testing the project and providing valuable feedback.
+Special thanks to Awwal Ishiaku for his support throughout the development process, and to William Weber for testing the project and providing valuable feedback.
 
-Finally, sincere appreciation goes to **Santiago Bassett**, CEO of Wazuh, for his leadership, vision, and continued commitment to the growth of the Wazuh ecosystem, helping foster an environment where community-driven innovation can thrive.
+Finally, sincere appreciation goes to Santiago Bassett, CEO of Wazuh, for his leadership, vision, and continued commitment to the growth of the Wazuh ecosystem, helping foster an environment where community-driven innovation can thrive.
 
 This project reflects the collaborative spirit of the open-source community, where every suggestion, discussion, and contribution helps strengthen the ecosystem for everyone.
 
