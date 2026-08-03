@@ -57,6 +57,7 @@ def get_process_tree():
         host     = request.args.get('host') or None
         ip       = request.args.get('ip') or None
         search   = request.args.get('filter', "")
+        event_id_filter = request.args.get('event_id', "") or None
         time_range = request.args.get('range', "24")
         start    = request.args.get('start')
         end      = request.args.get('end')
@@ -66,8 +67,8 @@ def get_process_tree():
                             "error": "agent_id, host or ip is required"}), 400
 
         identity = agent_id or host or ip
-        logger.info("process-tree request: identity=%s range=%s start=%s end=%s filter=%s",
-                    identity, time_range, start, end, search or '(none)')
+        logger.info("process-tree request: identity=%s range=%s start=%s end=%s filter=%s event_id=%s",
+                    identity, time_range, start, end, search or '(none)', event_id_filter or '(none)')
 
         events, sysmon_enrichment = logic.fetch_events_and_enrichment(
             agent_id=agent_id, hours_back=time_range, start=start, end=end, host=host, ip=ip)
@@ -75,7 +76,8 @@ def get_process_tree():
         logger.info("events fetched: %d 4688 events, %d sysmon events",
                     len(events), sum(len(v) for v in sysmon_enrichment.values()) if sysmon_enrichment else 0)
 
-        result = logic.build_tree(events, search, sysmon_enrichment=sysmon_enrichment)
+        result = logic.build_tree(events, search, sysmon_enrichment=sysmon_enrichment,
+                                  event_id_filter=event_id_filter)
         node_count = len(result.get('nodes', []))
         edge_count = len(result.get('edges', []))
         logger.info("tree built: %d nodes, %d edges", node_count, edge_count)
@@ -104,7 +106,9 @@ def expand_process_node():
         result = logic.expand_node(pid, hours_back=time_range, start=start, end=end,
                                     agent_id=agent_id, host=host, ip=ip,
                                     events=events, sysmon_enrichment=sysmon_enrichment)
-        logger.info("expand done: pid=%s new_nodes=%d", pid, len(result.get('nodes',[])))
+        if result is None:
+            result = {'nodes': [], 'edges': [], 'stats': {'total': 0}}
+        logger.info("expand done: pid=%s new_nodes=%d", pid, len(result.get('nodes', [])))
         return jsonify(result)
     except Exception as e:
         logger.exception("expand ERROR: %s", e)
