@@ -45,25 +45,46 @@ WPTV consists of two independent components:
 - `target/public/wptv.plugin.js`: Pre-built bundle (~2.5KB, no compilation required)
 - `target/public/wptv.plugin.js.gz`: Compressed bundle
 
+**Mode 1 - Standalone (direct browser access)**
+
 ```
-                   Wazuh Dashboard
-                          |
-          OpenSearch Dashboards Plugin
-               (wptv.plugin.js)
-                          |
-                 Route: /app/wptv
-                          |
-               iframe (sandbox + allow-downloads)
-                          |
-              Nginx Reverse Proxy (:5443)
-                          |
-            Flask + Gunicorn Backend (:5000)
-                          |
-         +----------------+----------------+
-         |                                 |
+Browser
+  |
+  +-- https://IP:5000  (direct, no nginx required)
+        |
+  Flask + Gunicorn Backend (:5000, TLS)
+        |
+        +----------------+----------------+
+        |                                 |
   Wazuh Indexer                   archives.json
     (Primary)                   alerts.json (fallback)
 ```
+
+**Mode 2 - Integrated into Wazuh Dashboard**
+
+```
+Browser
+  |
+  +-- https://IP:443 - https://IP/app/wptv (Wazuh Dashboard / OSD)
+        |
+        OpenSearch Dashboards Plugin (wptv.plugin.js)
+        Sidebar: Forensics -> Wazuh Process Tree Viewer
+        Route: /app/wptv
+        |
+        iframe (sandbox: allow-scripts, allow-same-origin,
+                         allow-popups, allow-downloads)
+        |
+        https://IP:5443  (Nginx Reverse Proxy - TLS required)
+        |
+  Flask + Gunicorn Backend (:5000, TLS)
+        |
+        +----------------+----------------+
+        |                                 |
+  Wazuh Indexer                   archives.json
+    (Primary)                   alerts.json (fallback)
+```
+
+> **Note:** In Mode 2, Nginx is required. The OSD plugin embeds WPTV via iframe - since OSD serves over HTTPS (:443), the iframe source must also be HTTPS to avoid mixed-content blocking. In Mode 1, you can access the backend directly at `:5000` without Nginx.
 
 ## Companion Sysmon Ruleset
 
