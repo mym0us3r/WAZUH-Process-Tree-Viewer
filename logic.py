@@ -48,6 +48,39 @@ SYSMON_ALL_DETECTION_EIDS = frozenset({
     '29', # EID 29  - File Executable Detected (new PE drop)
 })
 
+# ── Critical Windows Audit Event IDs ────────────────────────────────────────
+# Standard Windows Security / System events that every SOC should monitor.
+# When indexed by Wazuh, WPTV correlates them to the relevant process node
+# and surfaces them in the Alerts tab alongside Sysmon detections.
+# These require Windows audit policies to be enabled on the endpoint.
+WINDOWS_AUDIT_DETECTION_EIDS = frozenset({
+    '1102',  # Security log cleared (evidence tampering)
+    '4104',  # PowerShell script block logging (fileless malware)
+    '4616',  # System time changed (log tampering / evasion)
+    '4624',  # Successful logon
+    '4625',  # Failed logon (brute force / password spray)
+    '4648',  # Explicit credential logon (lateral movement / Pass-the-Hash)
+    '4663',  # Object access attempt (file / registry exfiltration)
+    '4672',  # Special privileges assigned to new logon (privilege escalation)
+    '4698',  # Scheduled task created (T1053 persistence)
+    '4702',  # Scheduled task updated (persistence evasion)
+    '4719',  # System audit policy changed (tampering)
+    '4720',  # User account created (rogue / backdoor account)
+    '4726',  # User account deleted (covering tracks)
+    '4728',  # Member added to security-enabled global group (privilege escalation)
+    '4732',  # Member added to security-enabled local group (privilege escalation)
+    '4740',  # Account lockout (brute force indicator)
+    '4768',  # Kerberos TGT requested (Kerberoasting / Golden Ticket)
+    '4769',  # Kerberos service ticket requested (lateral movement)
+    '4771',  # Kerberos pre-auth failed (credential attacks)
+    '4776',  # NTLM credential validation (Pass-the-Hash / NTLM relay)
+    '4964',  # Special groups assigned to new logon (privileged group monitoring)
+    '7045',  # New service installed (T1543 persistence)
+})
+
+# Combined gate: all EIDs that WPTV surfaces in the Alerts tab.
+ALL_DETECTION_EIDS = SYSMON_ALL_DETECTION_EIDS | WINDOWS_AUDIT_DETECTION_EIDS
+
 class ProcessTreeLogic:
     def __init__(self):
         self.log_path = "/var/ossec/logs/alerts/alerts.json"
@@ -199,6 +232,171 @@ class ProcessTreeLogic:
         # Each hit's _source is the raw alert document - same shape as alerts.json lines
         return [h['_source'] for h in hits]
 
+    def _iter_archive_paths(self, start_dt, end_dt):
+        """
+        Yield archive log file paths covering the requested time window.
+        Archives directory: /var/ossec/logs/archives/
+        Pattern matches _iter_log_paths but for ossec-archive-DD files.
+        """
+        now      = datetime.now(timezone.utc)
+        base_dir = '/var/ossec/logs/archives'
+        live     = os.path.join(base_dir, 'archives.json')
+        paths    = []
+        seen     = set()
+
+        cursor = start_dt
+        while cursor.date() <= end_dt.date():
+            dk = cursor.date()
+            if dk not in seen:
+                seen.add(dk)
+                year  = cursor.strftime('%Y')
+                month = cursor.strftime('%b')
+                day   = cursor.strftime('%d')
+                day_dir = os.path.join(base_dir, year, month)
+
+                if dk == now.date():
+                    if os.path.exists(live):
+                        paths.append(live)
+                    for ext in ['.json', '.json.gz']:
+                        rot = os.path.join(day_dir, f'ossec-archive-{day}{ext}')
+                        if os.path.exists(rot) and rot not in paths:
+                            paths.append(rot)
+                else:
+                    for ext in ['.json', '.json.gz']:
+                        rot = os.path.join(day_dir, f'ossec-archive-{day}{ext}')
+                        if os.path.exists(rot):
+                            paths.append(rot)
+                            break
+            cursor += timedelta(hours=1)
+
+        return paths
+
+    def _fetch_sysmon_from_archives(self, agent_id, host, ip, start_dt, end_dt, existing_enrichment):
+        """
+        Scan archives.json for ALL Sysmon events in ALL_DETECTION_EIDS —
+        including events that did NOT trigger a Wazuh rule (not in alerts/).
+
+        Performance strategy:
+          1. Pre-filter each line by agent/host string before JSON decode
+          2. Pre-filter each line by at least one target EID string
+          3. Only JSON-decode lines that pass both checks
+          4. Skip events outside the time window
+
+        Returns a supplementary sysmon_detections dict {pid: [detection, ...]}
+        containing ONLY events not already present in existing_enrichment.
+        """
+        if agent_id:
+            pre_agent = f'"id":"{agent_id}"'
+        elif host:
+            pre_agent = host.lower()
+        else:
+            return {}
+
+        # String patterns to pre-check before JSON decode
+        target_eids_str = [f'"eventID":"{eid}"' for eid in ALL_DETECTION_EIDS]
+        # Exclude 4688 — already covered completely by alerts/Indexer
+        target_eids_str = [s for s in target_eids_str if '"eventID":"4688"' not in s]
+
+        archive_paths = self._iter_archive_paths(start_dt, end_dt)
+        if not archive_paths:
+            return {}
+
+        supplement = {}   # pid -> [detections not yet in existing_enrichment]
+        lines_read = skipped = found = 0
+        t0 = _time.monotonic()
+
+        # Build a set of (ts, eventId) already in enrichment to avoid duplicates
+        existing_keys = set()
+        for pid_dets in existing_enrichment.get('sysmon_detections', {}).values():
+            for d in pid_dets:
+                existing_keys.add((d.get('time', ''), str(d.get('eventId', ''))))
+
+        GENERIC_RULES = {'67027', '61612', '67020', '60012', '60010', '', 'N/A'}
+
+        for path in archive_paths:
+            try:
+                opener = gzip.open if path.endswith('.gz') else open
+                mode   = 'rt'
+                with opener(path, mode, encoding='utf-8', errors='replace') as fh:
+                    for raw in fh:
+                        lines_read += 1
+                        # Pre-filter 1: agent/host
+                        if pre_agent not in raw and (not host or host not in raw):
+                            skipped += 1
+                            continue
+                        # Pre-filter 2: any target EID
+                        if not any(eid_s in raw for eid_s in target_eids_str):
+                            skipped += 1
+                            continue
+                        try:
+                            evt = json.loads(raw)
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+
+                        data_win = evt.get('data', {}).get('win', {})
+                        sys_f    = data_win.get('system', {})
+                        ev       = data_win.get('eventdata', {})
+                        event_id = sys_f.get('eventID', '')
+
+                        if event_id not in ALL_DETECTION_EIDS or event_id == '4688':
+                            continue
+
+                        # Agent filter
+                        agent_d = evt.get('agent', {})
+                        if agent_id and agent_d.get('id') != agent_id:
+                            continue
+                        if host and host.lower() not in sys_f.get('computer', '').lower():
+                            continue
+
+                        # Timestamp filter
+                        ts_raw = evt.get('timestamp', '')
+                        try:
+                            ts = dateutil.parser.isoparse(ts_raw).replace(tzinfo=timezone.utc)
+                            if not (start_dt <= ts <= end_dt):
+                                continue
+                        except Exception:
+                            continue
+
+                        # PID correlation
+                        pid = ev.get('processId') or ev.get('newProcessId')
+                        if not pid:
+                            continue
+                        pid = str(pid).lower()
+
+                        ts_key = (ts_raw, str(event_id))
+                        if ts_key in existing_keys:
+                            continue   # already captured from alerts
+
+                        # Build detection entry — rule may be absent or generic
+                        rule_s = evt.get('rule', {})
+                        rid    = rule_s.get('id', '')
+                        entry  = {
+                            'eventId':   event_id,
+                            'ruleId':    rid if rid not in GENERIC_RULES else '',
+                            'ruleLevel': int(rule_s.get('level') or 0),
+                            'ruleDesc':  (rule_s.get('description', '')
+                                          if rid not in GENERIC_RULES
+                                          else f'Sysmon EID {event_id} (archive)'),
+                            'mitre':     rule_s.get('mitre', {}),
+                            'providerName': sys_f.get('providerName',
+                                                       'Microsoft-Windows-Sysmon'),
+                            'time':      ts_raw,
+                            'computer':  sys_f.get('computer', ''),
+                            'image':     ev.get('image', ev.get('imageLoaded',
+                                         ev.get('targetFilename', ''))),
+                            'source':    'archive',
+                        }
+                        supplement.setdefault(pid, []).append(entry)
+                        existing_keys.add(ts_key)
+                        found += 1
+            except Exception as exc:
+                logger.warning('archive scan error on %s: %s', path, exc)
+
+        elapsed = _time.monotonic() - t0
+        logger.info('archive sysmon scan: %d lines, %d skipped, %d new events in %.2fs (files: %d)',
+                    lines_read, skipped, found, elapsed, len(archive_paths))
+        return supplement
+
     def fetch_events_and_enrichment(self, agent_id=None, hours_back=24, start=None, end=None, host=None, ip=None):
         """
         Combines what used to be two separate methods (fetch_events for 4688,
@@ -238,8 +436,8 @@ class ProcessTreeLogic:
                     sys_f = data_win.get('system', {})
                     agent = item.get('agent', {})
                     event_id = sys_f.get('eventID', '')
-                    is_4688 = event_id == '4688'
-                    is_sysmon = event_id in SYSMON_ALL_DETECTION_EIDS
+                    is_4688  = event_id == '4688'
+                    is_sysmon = event_id in ALL_DETECTION_EIDS
                     if agent_id and agent.get('id') != agent_id:
                         continue
                     if host and host.lower() not in sys_f.get('computer', '').lower():
@@ -297,6 +495,20 @@ class ProcessTreeLogic:
                 elapsed = _time.monotonic() - t0
                 logger.info("fetch done in %.2fs: %d 4688 events, %d sysmon events (Indexer)",
                             elapsed, len(events), sum(len(v) for v in enrichment.values()))
+
+                # ── Supplement with archives for Sysmon events without rules ──
+                # The Indexer only has events that triggered a Wazuh rule.
+                # Archives have ALL events — critical for Threat Hunting.
+                archive_sup = self._fetch_sysmon_from_archives(
+                    agent_id, host, ip, start_dt, end_dt, enrichment)
+                if archive_sup:
+                    for pid, dets in archive_sup.items():
+                        db = enrichment['sysmon_detections'].setdefault(pid, [])
+                        db.extend(dets)
+                    logger.info("archive supplement: %d pids, %d new detections added",
+                                len(archive_sup),
+                                sum(len(v) for v in archive_sup.values()))
+
                 return events, enrichment
             except Exception as e:
                 logger.warning("Indexer unavailable (%s) - falling back to file scan", e)
@@ -337,7 +549,7 @@ class ProcessTreeLogic:
                         prefilter_pass += 1
 
                         is_4688 = '4688' in line
-                        is_sysmon = enrichment_enabled and any(f'"eventID":"{eid}"' in line for eid in SYSMON_ALL_DETECTION_EIDS)
+                        is_sysmon = enrichment_enabled and any(f'"eventID":"{eid}"' in line for eid in ALL_DETECTION_EIDS)
                         if not is_4688 and not is_sysmon:
                             continue
 
@@ -749,7 +961,7 @@ class ProcessTreeLogic:
             }
         }
 
-    def build_tree(self, events, search_filter="", sysmon_enrichment=None):
+    def build_tree(self, events, search_filter="", sysmon_enrichment=None, event_id_filter=None):
         t0 = _time.monotonic()
         logger.debug("build_tree: %d events, filter=%r", len(events), search_filter or "(none)")
         search_filter = search_filter.lower()
@@ -982,9 +1194,85 @@ class ProcessTreeLogic:
         elapsed_bt = _time.monotonic() - t0
         logger.info("build_tree done in %.3fs: %d nodes, %d edges",
                     elapsed_bt, len(nodes_map), len(edges))
+
+        nodes_list = list(nodes_map.values())
+
+        # ── Event ID filter ─────────────────────────────────────────────────
+        # If the caller requests only trees containing a specific Event ID,
+        # keep only the complete subtrees (root + all descendants) where at
+        # least one node has that EID in its detections.  No existing tree
+        # structure or detection logic is modified.
+        if event_id_filter:
+            eid_str = str(event_id_filter)
+
+            if eid_str == '4688':
+                # Every process node in WPTV originates from an EID 4688 event.
+                # Filtering by 4688 means "show all processes" - no reduction needed.
+                nodes_with_eid = {n['id'] for n in nodes_list
+                                  if not n.get('meta', {}).get('sysmon_only', False)
+                                  and not n.get('meta', {}).get('isNetworkNode', False)}
+
+            elif eid_str == '1':
+                # Sysmon EID 1 covers both Process-Create detections AND ghost nodes
+                # (sysmon_only=True nodes that have EID 1 telemetry but no 4688 event).
+                nodes_with_eid = {n['id'] for n in nodes_list
+                                  if n.get('meta', {}).get('sysmon_only', False)
+                                  or any(str(d.get('eventId', '')) == '1'
+                                         for d in n.get('meta', {}).get('detections', []))}
+
+            else:
+                # All other EIDs: look for them in the node's detections list.
+                nodes_with_eid = {
+                    n['id'] for n in nodes_list
+                    if any(str(d.get('eventId', '')) == eid_str
+                           for d in n.get('meta', {}).get('detections', []))
+                }
+            if nodes_with_eid:
+                # Build children map to traverse subtrees
+                children_map = {}
+                for e in edges:
+                    children_map.setdefault(e['from'], []).append(e['to'])
+                has_incoming = {e['to'] for e in edges}
+                roots = [n['id'] for n in nodes_list if n['id'] not in has_incoming]
+
+                def _subtree_has_eid(root_id):
+                    q = [root_id]
+                    while q:
+                        nid = q.pop()
+                        if nid in nodes_with_eid:
+                            return True
+                        q.extend(children_map.get(nid, []))
+                    return False
+
+                def _collect_subtree(root_id):
+                    ids, q = set(), [root_id]
+                    while q:
+                        nid = q.pop()
+                        ids.add(nid)
+                        q.extend(children_map.get(nid, []))
+                    return ids
+
+                valid_ids = set()
+                for r in roots:
+                    if _subtree_has_eid(r):
+                        valid_ids.update(_collect_subtree(r))
+
+                nodes_list = [n for n in nodes_list if n['id'] in valid_ids]
+                edges      = [e for e in edges if e['from'] in valid_ids and e['to'] in valid_ids]
+                logger.info("event_id_filter=%s: kept %d nodes, %d edges",
+                            eid_str, len(nodes_list), len(edges))
+            else:
+                # No node has the requested EID - return empty
+                nodes_list, edges = [], []
+                logger.info("event_id_filter=%s: no matching nodes", eid_str)
+
         return {
-            'nodes': list(nodes_map.values()), 'edges': edges,
-            'stats': {'total': len(latest), 'last_update': datetime.now().strftime("%H:%M:%S")}
+            'nodes': nodes_list, 'edges': edges,
+            'stats': {
+                'total':     len(latest),
+                'total_raw': len(latest_all),   # raw count before search_filter, for UI feedback
+                'last_update': datetime.now().strftime("%H:%M:%S")
+            }
         }
 
     def expand_node(self, pid, hours_back=24, start=None, end=None, agent_id=None, host=None, ip=None, sysmon_enrichment=None, events=None):
@@ -1028,53 +1316,4 @@ class ProcessTreeLogic:
         for child_pid, d in latest.items():
             if d['ppid'] == pid:
                 nodes_map[f"P{child_pid}"] = self._make_node(child_pid, d, sysmon_enrichment=sysmon_enrichment)
-                edges.append({'from': f"P{pid}", 'to': f"P{child_pid}"})
 
-        elapsed_bt = _time.monotonic() - t0
-        logger.info("expand_node done in %.3fs: pid=? %d nodes, %d edges",
-                    elapsed_bt, len(nodes_map), len(edges))
-        return {
-            'nodes': list(nodes_map.values()), 'edges': edges,
-            'stats': {'total': len(nodes_map), 'last_update': datetime.now().strftime("%H:%M:%S")}
-        }
-
-    def _scope_key(self, agent_id=None, host=None, ip=None):
-        """
-        Comments are scoped to whichever identity field was used for the
-        query (agent_id/host/ip), same precedence as fetch_events, so a
-        PID collision across two different endpoints never mixes notes.
-        """
-        if agent_id: return f"agent:{agent_id}"
-        if host: return f"host:{host.lower()}"
-        if ip: return f"ip:{ip}"
-        return "unscoped"
-
-    def _load_comments_store(self):
-        if not os.path.exists(self.comments_path):
-            return {}
-        try:
-            with open(self.comments_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error reading comments store: {e}")
-            return {}
-
-    def get_comments(self, pid, agent_id=None, host=None, ip=None):
-        store = self._load_comments_store()
-        key = f"{self._scope_key(agent_id, host, ip)}|{pid}"
-        return store.get(key, [])
-
-    def add_comment(self, pid, text, author, agent_id=None, host=None, ip=None):
-        if not text or not text.strip():
-            raise ValueError("comment text cannot be empty")
-        store = self._load_comments_store()
-        key = f"{self._scope_key(agent_id, host, ip)}|{pid}"
-        entry = {
-            'author': (author or 'analyst').strip()[:64],
-            'text': text.strip()[:2000],
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-        }
-        store.setdefault(key, []).append(entry)
-        with open(self.comments_path, 'w', encoding='utf-8') as f:
-            json.dump(store, f, indent=2)
-        return store[key]
