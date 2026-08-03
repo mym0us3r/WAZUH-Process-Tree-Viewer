@@ -90,6 +90,10 @@ Browser
 
 > **Note:** In Mode 2, Nginx is required. The OSD plugin embeds WPTV via iframe - since OSD serves over HTTPS (:443), the iframe source must also be HTTPS to avoid mixed-content blocking. In Mode 1, you can access the backend directly at `:5000` without Nginx.
 
+WPTV v2.1 deployed as a native OpenSearch Dashboards UI Plugin, accessible directly from the Wazuh Dashboard sidebar under Forensics.
+
+![WPTV inside Wazuh Dashboard](img/wptv_osd.png)
+
 ## Companion Sysmon Ruleset
 
 WPTV correlates Sysmon data from two sources: `wazuh-alerts-*` (Indexer, fast path) for events that triggered a Wazuh rule, and `/var/ossec/logs/archives/archives.json` for all events regardless of rule - including Sysmon telemetry captured but never escalated. Events like EID 24 (Clipboard Change) from any process appear in the Alerts tab even without a rule firing, as long as the event was ingested by Wazuh. This project was developed and validated against [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs), which also documents two ruleset bugs found during that validation (both present in the stock Wazuh 4.14.4 ruleset as well):
@@ -481,14 +485,6 @@ PowerShell spawning `net.exe`, `net1.exe`, `netstat.exe`, `whoami.exe`, `ipconfi
 Multiple PowerShell child instances created by a parent PowerShell - rule 92027, Sysmon EID 1, MITRE T1059.001 level 4.
 
 ![PowerShell Spawned PowerShell](img/ps-spawned.png)
-
----
-
-## WPTV inside Wazuh Dashboard
-
-WPTV v2.1 deployed as a native OpenSearch Dashboards UI Plugin, accessible directly from the Wazuh Dashboard sidebar under Forensics.
-
-![WPTV inside Wazuh Dashboard](img/wptv_osd.png)
 
 ---
 
