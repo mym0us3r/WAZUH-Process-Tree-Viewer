@@ -174,7 +174,8 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
 FROM: <input type="datetime-local" id="startInput">
 TO: <input type="datetime-local" id="endInput">
 </div>
-<div>FILTER: <input type="text" id="filterInput" placeholder="e.g. notepad.exe"></div>
+<div>PROCESS FILTER: <input type="text" id="filterInput" placeholder="e.g. notepad.exe"></div>
+<div>EventID: <input type="text" id="eventIdInput" placeholder="e.g. 17" style="width:70px;" title="Filter by Windows/Sysmon Event ID (e.g. 17, 24, 4104)"></div>
 <button id="loadBtn" onclick="loadTree()">ANALYZE</button>
 <button id="showAllBtn" onclick="showAllTrees()" style="display:none;background:#d97706;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">← SHOW ALL</button>
 <button onclick="exportAsPdf()" style="background:#374151;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">EXPORT PDF</button>
@@ -188,7 +189,7 @@ PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</s
 <div id="mynetwork"></div>
 <div id="panelDivider" title="Drag to resize"></div>
 <div id="detailPanel">
-<div style="font-size:10px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.1em;padding:4px 0 6px;border-bottom:1px solid #1f2937;margin-bottom:6px;">WPTV — Process Details</div>
+<div style="font-size:10px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.1em;padding:4px 0 6px;border-bottom:1px solid #1f2937;margin-bottom:6px;">WPTV  -  Process Details</div>
 <h3 id="detailTitle" style="font-size:14px;margin:0 0 8px;color:#7dd3fc;"></h3>
 <div id="detailPlaceholder" class="placeholder">Click a node in the graph to see its full details here - command line, user, host, IP, rule - plus a direct link to Discover. The text is selectable so you can copy it.</div>
 
@@ -459,7 +460,7 @@ function renderAlertTimeline(meta) {
             if (ids.length) mitreParts.push(ids.join(' · '));
         }
         const mitreHtml = mitreParts.length
-            ? `<div class="alert-mitre">⬡ MITRE: ${mitreParts.join(' — ')}</div>` : '';
+            ? `<div class="alert-mitre">⬡ MITRE: ${mitreParts.join('  -  ')}</div>` : '';
 
         return `<div class="alert-entry ${entryClass}">
             <div class="alert-event-type ${evTypeClass}">${evTypeLabel}
@@ -1651,8 +1652,10 @@ function applyChildrenPagination() {
         edgesDataset.remove(hidEdges.map(e=>e.id));
         nodesDataset.remove(allHid);
         const lastId=sorted[MORE_THRESHOLD-1];
-        const lp=network?network.getPosition(lastId):null;
-        const pp=network?network.getPosition(pid):null;
+        let lp=null;
+        try{ if(network && nodesDataset.get(lastId)) lp=network.getPosition(lastId); }catch(e){ lp=null; }
+        let pp=null;
+        try{ if(network && nodesDataset.get(pid)) pp=network.getPosition(pid); }catch(e){ pp=null; }
         const mid='MORE:'+pid;
         nodesDataset.add({
             id:mid, label:'+'+toHide.length+' MORE',
@@ -1761,22 +1764,60 @@ async function generateFullReport() {
     const range   = rangeEl ? rangeEl.options[rangeEl.selectedIndex]?.text || rangeEl.value : 'N/A';
     const total   = document.getElementById('statTotal')?.innerText || '0';
 
-    // Cover page
+    // ── Cover: dark header ────────────────────────────────────────────────
     doc.setFillColor(15, 34, 54);
     doc.rect(0, 0, pageWidth, 90, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(0, 169, 224);
+    doc.setFontSize(20); doc.setTextColor(0, 169, 224);
     doc.text('WAZUH Process Tree Viewer', marginX, 38);
-    doc.setFontSize(12);
-    doc.setTextColor(168, 216, 240);
-    doc.text('Threat Hunting & Incident Response — Full Process Report', marginX, 58);
+    doc.setFontSize(12); doc.setTextColor(168, 216, 240);
+    doc.text('Threat Hunting & Incident Response  -  Full Process Report', marginX, 58);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(90, 143, 168);
+    doc.setFontSize(9); doc.setTextColor(90, 143, 168);
     doc.text(`Agent: ${agentId}  |  Time Range: ${range}  |  Total Processes: ${total}  |  Generated: ${new Date().toLocaleString()}`, marginX, 78);
 
-    // Build children map and find roots
+    // ── Cover body: Executive Summary + Acknowledgements ─────────────────
+    let y = 115;
+    const lineH = 13;
+
+    function pdfSection(title, body) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.setTextColor(0, 100, 160);
+        doc.text(title, marginX, y); y += lineH + 2;
+        doc.setDrawColor(0, 169, 224); doc.setLineWidth(0.5);
+        doc.line(marginX, y - 4, pageWidth - marginX, y - 4); y += 4;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        doc.setTextColor(44, 62, 80);
+        const lines = doc.splitTextToSize(body, contentWidth);
+        doc.text(lines, marginX, y); y += lines.length * lineH + 10;
+    }
+
+    pdfSection('Executive Summary',
+        'This report provides an executive overview of process activity collected during the selected analysis period. ' +
+        'Rather than presenting every individual process graph on the cover page, the report focuses on delivering a concise ' +
+        'summary of the observed execution landscape and directing the analyst to the detailed process trees that follow.\n\n' +
+        'Each subsequent section organises processes by their parent process, preserving the original execution hierarchy and ' +
+        'providing essential context such as parent-child relationships, executing user, and associated security alerts when available.\n\n' +
+        'This approach allows analysts, incident responders, and threat hunters to quickly identify abnormal process execution chains, ' +
+        'understand process ancestry, validate legitimate operating system behaviour, and investigate suspicious activity with greater efficiency.\n\n' +
+        'The Wazuh Process Tree Viewer (WPTV) was designed to transform raw process creation events into structured execution trees, ' +
+        'reducing investigation time while improving visibility into endpoint activity. By combining process relationships with security ' +
+        'telemetry, WPTV enables faster triage, more effective threat hunting, and a clearer understanding of complex execution flows.');
+
+    pdfSection('Acknowledgements',
+        'The Wazuh Process Tree Viewer (WPTV) was created with passion and dedication by Kislley Rodrigues (a.k.a. m0us3r) ' +
+        'as an open-source contribution to the Wazuh ecosystem.\n\n' +
+        'Special thanks to the entire Wazuh Community for its continuous support and valuable feedback throughout the project\'s development.\n\n' +
+        'The author would also like to express sincere gratitude to the Wazuh Ambassador Program team  -  Katia Bukovac, ' +
+        'Raquel Presas Salguero, and Carolina Landa  -  for their encouragement, trust, and continued support.\n\n' +
+        'Special thanks to Awwal Ishiaku for his support throughout the development process, and to William Weber for testing ' +
+        'the project and providing valuable feedback.\n\n' +
+        'Finally, sincere appreciation goes to Santiago Bassett, CEO of Wazuh, for his leadership, vision, and continued ' +
+        'commitment to the growth of the Wazuh ecosystem, helping foster an environment where community-driven innovation can thrive.\n\n' +
+        'This project reflects the collaborative spirit of the open-source community, where every suggestion, discussion, ' +
+        'and contribution helps strengthen the ecosystem for everyone.');
+
+    // ── Build tree data ───────────────────────────────────────────────────
     const hasIncoming = new Set();
     edgesDataset.forEach(e => hasIncoming.add(e.to));
     const childMap = {};
@@ -1784,136 +1825,243 @@ async function generateFullReport() {
 
     const roots = [];
     nodesDataset.forEach(n => {
-        if (n.meta && !n.meta.isNetworkNode && !n.meta.isMoreNode && !hasIncoming.has(n.id)) {
+        if (n.meta && !n.meta.isNetworkNode && !n.meta.isMoreNode && !hasIncoming.has(n.id))
             roots.push(n);
-        }
     });
 
-    function collectTree(rootId) {
-        const result = [], queue = [{ id: rootId, depth: 0 }], seen = new Set();
-        while (queue.length) {
-            const { id, depth } = queue.shift();
-            if (seen.has(id)) continue;
-            seen.add(id);
-            const n = nodesDataset.get(id);
-            if (!n || n.meta?.isNetworkNode || n.meta?.isMoreNode) continue;
-            result.push({ id, depth, node: n });
-            (childMap[id] || []).forEach(c => queue.push({ id: c, depth: depth + 1 }));
-        }
-        return result;
-    }
+    
 
-    // Cover page — header already written above; now capture the current graph
-    const canvas = document.querySelector('#mynetwork canvas');
-    if (canvas) {
-        try {
-            // Fit the network to show all trees before capturing
-            if (network) network.fit({ animation: false });
-            // Small delay to ensure the fit is rendered
-            await new Promise(resolve => setTimeout(resolve, 120));
-            const cvs = document.querySelector('#mynetwork canvas');
-            const imgData = cvs.toDataURL('image/png', 1.0);
-            const maxH = pageHeight - 115;
-            const ratio = cvs.width / cvs.height;
-            const imgW = Math.min(contentWidth, maxH * ratio);
-            const imgH = imgW / ratio;
-            const imgX = marginX + (contentWidth - imgW) / 2;
-            doc.setFillColor(15, 34, 54);
-            doc.rect(marginX, 96, contentWidth, maxH, 'F');
-            doc.addImage(imgData, 'PNG', imgX, 96 + (maxH - imgH) / 2, imgW, imgH);
-        } catch (e) {
-            // Canvas tainted or unavailable — skip image, report continues without it
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(9);
-            doc.setTextColor(150, 150, 150);
-            doc.text('(graph capture unavailable)', marginX, 140);
-        }
-    }
-
-    // Page 2: summary table (one row per tree)
-    doc.addPage();
-    let y = 50;
+    // ── Page 2: summary table ─────────────────────────────────────────────
+    doc.addPage(); y = 50;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
     doc.setTextColor(15, 34, 54);
     doc.text('Process Trees Summary', marginX, y); y += 10;
 
     const summaryRows = roots.map((root, i) => {
-        const tree   = collectTree(root.id);
+        const tree   = collectFullTree(root.id);
         const name   = root.meta?.name || root.label?.split('\n')[0] || root.id;
-        const host   = tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const host   = root.meta?.host || tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const user   = root.meta?.user || '–';
+        // alerts: badgeCounts covers ALL alert types (Wazuh rules + Sysmon detections)
         const alerts = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
-        return [i + 1, name, host, tree.length, alerts > 0 ? `⚠ ${alerts}` : '–'];
+        return [i + 1, name, user, host, tree.length];
     });
 
     doc.autoTable({
         startY: y + 6,
-        head: [['#', 'Parent Process', 'Host', 'Processes', 'Alerts']],
+        head: [['#', 'Parent Process', 'User', 'Host', 'Processes']],
         body: summaryRows,
         margin: { left: marginX, right: marginX },
-        styles: { fontSize: 9, cellPadding: 5 },
+        tableWidth: contentWidth,
+        styles: { fontSize: 9, cellPadding: 5, halign: 'left' },
         headStyles: { fillColor: [15, 34, 54], textColor: 255 },
-        columnStyles: { 4: { textColor: [185, 28, 28], fontStyle: 'bold' } },
+        columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 180 },
+            3: { cellWidth: 120 },
+            4: { cellWidth: 70, halign: 'center' },
+            5: { cellWidth: 55, textColor: [185, 28, 28], fontStyle: 'bold', halign: 'center' },
+        },
     });
 
-    // One detailed page per tree
+    // ── Detailed pages: one per tree ──────────────────────────────────────
     roots.forEach((root, ri) => {
-        const tree     = collectTree(root.id);
+        const tree     = collectFullTree(root.id);
         const rootName = root.meta?.name || root.label?.split('\n')[0] || root.id;
-        const host     = tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const rootUser = root.meta?.user || root.meta?.targetUser || '-';
+        const host     = root.meta?.host || tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
         const totalAl  = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
 
-        doc.addPage();
-        y = 50;
+        doc.addPage(); y = 50;
 
-        // Red header bar
         doc.setFillColor(185, 28, 28);
         doc.rect(marginX, y - 16, contentWidth, 24, 'F');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
         doc.setTextColor(255, 255, 255);
-        doc.text(`[${ri + 1}] PARENT PROCESS: ${rootName}   |   Host: ${host}   |   ${tree.length} processes   |   ${totalAl > 0 ? '⚠ ' + totalAl + ' alerts' : 'No alerts'}`, marginX + 8, y + 2);
+        doc.text(
+            `[${ri + 1}] ${rootName}  |  User: ${rootUser}  |  Host: ${host}  |  ${tree.length} processes  |  ${totalAl > 0 ? '⚠ ' + totalAl + ' alerts' : 'No alerts'}`,
+            marginX + 8, y + 2
+        );
         y += 22;
 
+        // Table: PROCESS, PARENT, USER, HOST
         const tableRows = tree.map(({ id, depth, node: n }) => {
             const m          = n.meta || {};
             const indent     = '  '.repeat(depth) + (depth > 0 ? '└ ' : '');
             const parentEdge = edgesDataset.get({ filter: e => e.to === id })[0];
             const parentNode = parentEdge ? nodesDataset.get(parentEdge.from) : null;
-            const parentName = parentNode?.meta?.name || '(root)';
-            const alerts     = m.detections?.length || 0;
-            const cmd        = m.cmd ? (m.cmd.length > 90 ? m.cmd.slice(0, 87) + '...' : m.cmd) : 'N/A';
+            const parentName = parentNode?.meta?.name || m.name || '';
+            const nodeHost   = m.host || host;
             return [
                 m.order != null ? m.order : '',
                 indent + (m.name || n.label?.split('\n')[0] || id),
-                m.pid || 'N/A',
                 parentName,
-                m.user || 'N/A',
-                alerts > 0 ? `⚠ ${alerts}` : '–',
-                cmd
+                m.user || m.targetUser || '-',
+                nodeHost,
             ];
         });
 
         doc.autoTable({
             startY: y,
-            head: [['#', 'Process', 'PID', 'Parent', 'User', 'Alerts', 'Command Line']],
+            head: [['#', 'Process', 'Parent', 'User', 'Host']],
             body: tableRows,
             margin: { left: marginX, right: marginX },
-            styles: { fontSize: 7.5, cellPadding: 3.5, overflow: 'linebreak' },
+            tableWidth: contentWidth,
+            styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
             headStyles: { fillColor: [30, 58, 95], textColor: 255 },
             columnStyles: {
-                0: { cellWidth: 22 },
-                2: { cellWidth: 55 },
-                5: { cellWidth: 40, textColor: [185, 28, 28], fontStyle: 'bold' },
-                6: { cellWidth: 215 },
+                0: { cellWidth: 22, halign: 'center' },
+                1: { cellWidth: 180 },
+                2: { cellWidth: 160 },
+                3: { cellWidth: 110 },
+                4: { cellWidth: 110 },
             },
         });
     });
 
-    // Footer
+    // ── Final page: Process frequency pie chart ───────────────────────────
+    doc.addPage();
+    const PIE_COLORS = [
+        [41,128,185],[192,57,43],[39,174,96],[211,84,0],[142,68,173],
+        [22,160,133],[243,156,18],[52,73,94],[231,76,60],[26,188,156],
+        [149,165,166],
+    ];
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Top Parent Processes - Frequency', pageWidth / 2, 55, { align: 'center' });
+    doc.setDrawColor(0, 169, 224); doc.setLineWidth(0.5);
+    doc.line(marginX, 60, pageWidth - marginX, 60);
+
+    // Count ONLY root (Parent Process) nodes - no children counted
+    const rootHasIncoming = new Set();
+    edgesDataset.forEach(e => rootHasIncoming.add(e.to));
+    // Also include roots from moreStore hidden nodes
+    Object.values(moreStore).forEach(s => {
+        [...s.internalEdges, ...s.parentEdges].forEach(e => rootHasIncoming.add(e.to));
+    });
+
+    const procCount = {};
+    const allNodeLookup = {};
+    nodesDataset.forEach(n => { allNodeLookup[n.id] = n; });
+    Object.values(moreStore).forEach(s => s.nodes.forEach(n => { if (!allNodeLookup[n.id]) allNodeLookup[n.id] = n; }));
+
+    Object.values(allNodeLookup).forEach(n => {
+        if (!n.meta || n.meta.isNetworkNode || n.meta.isMoreNode) return;
+        // ONLY root nodes (no incoming edge = Parent Process)
+        if (rootHasIncoming.has(n.id)) return;
+        const name = n.meta.name || n.label?.split('\n')[0] || 'unknown';
+        procCount[name] = (procCount[name] || 0) + 1;
+    });
+    const totalRoots = Object.values(procCount).reduce((s, v) => s + v, 0) || 1;
+    let topProcs = Object.entries(procCount).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    // Add "Others" for the remainder (if there are more than 10 distinct roots)
+    const topTotal = topProcs.reduce((s, [, c]) => s + c, 0);
+    if (topTotal < totalRoots) topProcs.push(['Others', totalRoots - topTotal]);
+
+    // Layout: pie in upper 60% of content area, legend in bottom 40%
+    const legendRows = Math.ceil(topProcs.length / 2);
+    const legendH    = legendRows * 16 + 16;
+    const pieZoneH   = pageHeight - 90 - legendH;
+    const cx = pageWidth / 2;
+    const cy = 70 + pieZoneH / 2;
+    const r  = Math.min(pieZoneH / 2 - 50, contentWidth * 0.26);
+
+    // Draw slices (fill == draw colour, EPSILON overlap, no gap artefacts)
+    function drawSlice(doc, cx, cy, r, a1, a2, rgb) {
+        const STEPS = 44, EPSILON = 0.014;
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+        doc.setLineWidth(0);
+        for (let i = 0; i < STEPS; i++) {
+            const ta1 = a1 + (a2 - a1) * i       / STEPS - (i > 0 ? EPSILON : 0);
+            const ta2 = a1 + (a2 - a1) * (i + 1) / STEPS + EPSILON;
+            doc.triangle(cx, cy,
+                cx + r * Math.cos(ta1), cy + r * Math.sin(ta1),
+                cx + r * Math.cos(ta2), cy + r * Math.sin(ta2), 'F');
+        }
+    }
+
+    let angle = -Math.PI / 2;
+    const sliceAngles = [];
+    topProcs.forEach(([, count], i) => {
+        const slice = (count / totalRoots) * 2 * Math.PI;
+        drawSlice(doc, cx, cy, r, angle, angle + slice, PIE_COLORS[i % PIE_COLORS.length]);
+        sliceAngles.push({ mid: angle + slice / 2, slice });
+        angle += slice;
+    });
+
+    // Clean outer ring
+    doc.setDrawColor(255, 255, 255); doc.setLineWidth(1.5); doc.circle(cx, cy, r, 'S');
+    doc.setDrawColor(210, 220, 230); doc.setLineWidth(0.4); doc.circle(cx, cy, r + 2, 'S');
+
+    // Leader lines — anti-overlap: sort labels by Y per side (left/right),
+    // then assign positions with a minimum gap to guarantee legibility.
+    const _labelItems = topProcs.map(([name, count], i) => ({
+        name, i,
+        pct: ((count / totalRoots) * 100).toFixed(1),
+        col: PIE_COLORS[i % PIE_COLORS.length],
+        midA: sliceAngles[i].mid,
+        naturalY: cy + (r + 28) * Math.sin(sliceAngles[i].mid),
+        isRight: Math.cos(sliceAngles[i].mid) >= 0,
+    }));
+
+    const _right = _labelItems.filter(it => it.isRight);
+    const _left  = _labelItems.filter(it => !it.isRight);
+
+    function _assignY(items, minGap) {
+        items.sort((a, b) => a.naturalY - b.naturalY);
+        let lastY = -Infinity;
+        items.forEach(it => {
+            it.finalY = Math.max(it.naturalY, lastY + minGap);
+            lastY = it.finalY;
+        });
+    }
+    _assignY(_right, 12);
+    _assignY(_left,  12);
+
+    [..._right, ..._left].forEach(({ name, pct, col, midA, finalY, isRight }) => {
+        const edgeX = cx + (r + 5)  * Math.cos(midA);
+        const edgeY = cy + (r + 5)  * Math.sin(midA);
+        const ancX  = cx + (r + 24) * (isRight ? 1 : -1);
+        const hLen  = 20;
+        const hx2   = ancX + (isRight ? hLen : -hLen);
+
+        doc.setDrawColor(col[0], col[1], col[2]);
+        doc.setLineWidth(0.4);
+        doc.line(edgeX, edgeY, ancX, finalY);   // from pie edge to label anchor
+        doc.line(ancX, finalY, hx2, finalY);     // horizontal callout
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+        doc.setTextColor(col[0], col[1], col[2]);
+        doc.text(`${name}  ${pct}%`, hx2 + (isRight ? 2 : -2), finalY + 1,
+                 { align: isRight ? 'left' : 'right' });
+    });
+
+    // Legend in 2 columns at the bottom, centred
+    const legendTop = cy + r + 52;
+    const colW2 = contentWidth / 2;
+    doc.setFontSize(8);
+    topProcs.forEach((item, i) => {
+        const [name, count] = item;
+        const pct = ((count / totalRoots) * 100).toFixed(1);
+        const col = PIE_COLORS[i % PIE_COLORS.length];
+        const col2 = i % 2;
+        const row  = Math.floor(i / 2);
+        const lx2  = marginX + col2 * colW2 + 4;
+        const ly2  = legendTop + row * 16;
+        doc.setFillColor(col[0], col[1], col[2]);
+        doc.setDrawColor(col[0], col[1], col[2]);
+        doc.roundedRect(lx2, ly2 - 8, 10, 9, 2, 2, 'F');
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(44, 62, 80);
+        doc.text(`${name}  -  ${pct}%  (${count})`, lx2 + 14, ly2);
+    });
+    // ── Footer on all pages ───────────────────────────────────────────────
     const pages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
         doc.setPage(i);
-        doc.setFontSize(7.5);
-        doc.setTextColor(130, 130, 130);
+        doc.setFontSize(7.5); doc.setTextColor(130, 130, 130);
         doc.text(
             `WPTV v2.1  |  Agent ${agentId}  |  ${range}  |  Page ${i} of ${pages}  |  github.com/mym0us3r/WAZUH-Process-Tree-Viewer`,
             pageWidth / 2, pageHeight - 12, { align: 'center' }
@@ -1923,11 +2071,46 @@ async function generateFullReport() {
     doc.save(`WPTV_${agentId}_${range.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
+function collectFullTree(rootId) {
+        // Mapa de filhos completo: visible edges + edges de nós hidden no moreStore
+        const fullChildMap = {};
+        edgesDataset.forEach(e => {
+            if (!fullChildMap[e.from]) fullChildMap[e.from] = [];
+            fullChildMap[e.from].push(e.to);
+        });
+        Object.values(moreStore).forEach(store => {
+            [...store.parentEdges, ...store.internalEdges].forEach(e => {
+                if (!fullChildMap[e.from]) fullChildMap[e.from] = [];
+                if (!fullChildMap[e.from].includes(e.to)) fullChildMap[e.from].push(e.to);
+            });
+        });
+
+        // Lookup de nós completo: visíveis + ocultos no moreStore
+        const fullNodeMap = {};
+        nodesDataset.forEach(n => { fullNodeMap[n.id] = n; });
+        Object.values(moreStore).forEach(store => {
+            store.nodes.forEach(n => { if (!fullNodeMap[n.id]) fullNodeMap[n.id] = n; });
+        });
+
+        const result = [], queue = [{ id: rootId, depth: 0 }], seen = new Set();
+        while (queue.length) {
+            const { id, depth } = queue.shift();
+            if (seen.has(id)) continue; seen.add(id);
+            const n = fullNodeMap[id];
+            if (!n || n.meta?.isNetworkNode || n.meta?.isMoreNode) continue;
+            result.push({ id, depth, node: n });
+            (fullChildMap[id] || [])
+                .filter(c => !String(c).startsWith('MORE:'))
+                .forEach(c => queue.push({ id: c, depth: depth + 1 }));
+        }
+        return result;
+    }
 
 
 async function loadTree() {
     const identityParams = buildIdentityParams();
-    const filter = document.getElementById('filterInput').value;
+    const filter   = document.getElementById('filterInput').value;
+    const eventId  = (document.getElementById('eventIdInput')?.value || '').trim();
     const container = document.getElementById('mynetwork');
     const btn = document.getElementById('loadBtn');
     const statusMsg = document.getElementById('statusMsg');
@@ -1962,7 +2145,7 @@ async function loadTree() {
     const fetchStart = performance.now();
 
     try {
-        const response = await fetch(`http://${window.location.hostname}:5000/api/process-tree?${identityParams}&filter=${filter}&${buildRangeParams()}`);
+        const response = await fetch(`/api/process-tree?${identityParams}&filter=${filter}&${buildRangeParams()}${eventId ? '&event_id=' + encodeURIComponent(eventId) : ''}`);
         const data = await response.json();
         const fetchMs = Math.round(performance.now() - fetchStart);
 
@@ -2039,6 +2222,11 @@ async function loadTree() {
             const _isRoot = !n.meta.observed; // synthetic parent = root
             const _bg   = _isRoot ? '#b91c1c' : '#4b5563';
             const _bdr  = _isRoot ? '#7f1d1d' : '#374151';
+            const _user  = n.meta.user  || '';
+            const _host  = n.meta.host  || '';
+            const _title = _isRoot
+                ? 'PARENT PROCESS  -  ' + _name + (_user ? '  -  ' + _user : '') + (_host ? '  -  ' + _host : '')
+                : undefined;
             _treeUpd.push({
                 id: n.id, shape: 'box',
                 label: _icon + _name + '\n(PID: ' + _pid + ')',
@@ -2046,7 +2234,8 @@ async function loadTree() {
                 font: { color: '#f1f5f9', size: 12, face: 'Arial' },
                 borderWidth: 2, shadow: false,
                 widthConstraint: { maximum: 280 },
-                margin: { top: 6, bottom: 6, left: 10, right: 10 }
+                margin: { top: 6, bottom: 6, left: 10, right: 10 },
+                ..._title ? { title: _title } : {},
             });
         });
         if (_treeUpd.length) nodesDataset.update(_treeUpd);
@@ -2070,7 +2259,16 @@ async function loadTree() {
                 font: { color: '#6b7280', size: 10, strokeWidth: 2, strokeColor: '#1a202c', align: 'middle' }
             },
             physics: false,
-            interaction: { hover: true, dragNodes: true }
+            interaction: {
+                hover: true,
+                dragNodes: true,
+                dragView: true,
+                zoomView: true,
+                multiselect: false,
+                selectable: true,
+                navigationButtons: false,
+                keyboard: false
+            }
         };
 
         if (network) network.destroy();
@@ -2100,7 +2298,16 @@ async function loadTree() {
 
         statusMsg.style.color = '#9ca3af';
         if (nodeCount === 0) {
-            statusMsg.innerText = `loaded in ${fetchMs}ms (0 processes found) — no EventID 4688 events in the selected time window. Try a wider range.`;
+            const rawTotal = data.stats?.total_raw || 0;
+            const activeFilter = document.getElementById('filterInput')?.value?.trim();
+            const activeEventId = document.getElementById('eventIdInput')?.value?.trim();
+            if (rawTotal > 0 && (activeFilter || activeEventId)) {
+                const which = activeFilter ? `process filter '${activeFilter}'` : `EventID '${activeEventId}'`;
+                statusMsg.style.color = '#f59e0b';
+                statusMsg.innerText = `No processes matched ${which} in this time window. Clear the filter or try a wider range.`;
+            } else {
+                statusMsg.innerText = `Loaded in ${fetchMs}ms (0 processes found) - no EventID 4688 events in the selected time window. Try a wider range.`;
+            }
         } else {
             statusMsg.innerText = `Loaded in ${fetchMs}ms (${nodeCount} nodes)`;
         }
@@ -2304,7 +2511,7 @@ async function handleNodeClick(params) {
     if (!identityParams) return;
 
     try {
-        const response = await fetch(`http://${window.location.hostname}:5000/api/process-tree/expand?${identityParams}&pid=${pid}&${buildRangeParams()}`);
+        const response = await fetch(`/api/process-tree/expand?${identityParams}&pid=${pid}&${buildRangeParams()}`);
         const data = await response.json();
 
         if (!data.nodes || !data.nodes.length) return;
@@ -2431,7 +2638,7 @@ function handleNodeDoubleClick(params) {
             id: nodeId,
             color: { background: '#b91c1c', border: solo ? '#ffffff' : '#7f1d1d' },
             borderWidth: solo ? 4 : 2,
-            title: solo ? 'SOLO MODE — double-click to return to tree mode' : undefined
+            title: solo ? 'SOLO MODE  -  double-click to return to tree mode' : undefined
         });
         return;
     }
