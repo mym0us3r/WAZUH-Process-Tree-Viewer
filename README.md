@@ -27,6 +27,8 @@ Both modes share the same backend and frontend. The OSD plugin embeds the standa
 
 ## Project Architecture & File Structure
 
+![Architecture](img/arq.svg)
+
 WPTV consists of two independent components:
 
 **WPTV Backend** (`process_tree_api/`)
