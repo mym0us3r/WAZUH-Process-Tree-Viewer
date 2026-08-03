@@ -4,24 +4,24 @@ set -e
 PLUGIN_SRC="$(dirname "$0")"
 PLUGIN_DST="/usr/share/wazuh-dashboard/plugins/wptv"
 
-echo "[1/3] Copiando plugin..."
+echo "[1/3] Copying plugin..."
 cp -r "$PLUGIN_SRC" "$PLUGIN_DST"
 
-# Brotli no servidor (se disponível)
+# Brotli compression (if available)
 if command -v brotli &>/dev/null; then
   brotli -9 -k "$PLUGIN_DST/target/public/wptv.plugin.js"
-  echo "      brotli comprimido"
+  echo "      brotli compressed"
 fi
 
-echo "[2/3] Ajustando permissões..."
+echo "[2/3] Setting permissions..."
 chown -R wazuh-dashboard:wazuh-dashboard "$PLUGIN_DST"
 find "$PLUGIN_DST" -type d -exec chmod 750 {} \;
 find "$PLUGIN_DST" -type f -exec chmod 640 {} \;
 chmod 750 "$PLUGIN_DST/install.sh"
 
-echo "[3/3] Reiniciando Wazuh Dashboard..."
+echo "[3/3] Restarting Wazuh Dashboard..."
 systemctl restart wazuh-dashboard
 
 echo ""
-echo "OK! Acesse o Wazuh Dashboard e procure 'Process Tree' na sidebar (seção Forensics)."
-echo "Se não aparecer, aguarde 30s e recarregue a página."
+echo "Done! Open the Wazuh Dashboard and look for 'Wazuh Process Tree Viewer' in the sidebar under Forensics."
+echo "If it does not appear, wait 30 seconds and reload the page."
