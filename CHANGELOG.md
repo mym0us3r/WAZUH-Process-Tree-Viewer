@@ -25,11 +25,6 @@
 - **Orphaned code block at global scope**: a stale copy of the old `generateFullReport` body was executing at page load time outside any function, causing `ReferenceError: doc is not defined` that silently stopped drag/pan event handler registration. Block removed; all drag functionality restored.
 - **`allow-downloads` missing from iframe sandbox**: PDF export was silently blocked by the browser when WPTV was loaded inside the OSD plugin iframe. Fixed by adding `allow-downloads` to the sandbox attribute in `wptv.plugin.js`.
 
-### Documentation
-
-- README updated: date 2026-08-03, This project has been tested only on Wazuh 4.14.4, OSD 2.19.4, new sections for OSD plugin, Windows Audit EIDs, EventID field, archive scan, PROCESS FILTER.
-- CHANGELOG updated.
-
 ---
 
 ## v2.1 - 2026-07-30
@@ -64,11 +59,6 @@
 - **`computeLRTreeLayout` O(N²) freeze**: `subtreeH()` recomputed the height of every descendant for every ancestor without caching, resulting in O(N²) recursive calls on large graphs (e.g. 2051 nodes). Added `heightCache` dictionary; each node's height is computed once and reused, reducing to O(N) total calls.
 - **Orphan nodes after MORE pagination**: `applyChildrenPagination` removed direct hidden children but not their descendants, leaving grandchildren as disconnected nodes. Fixed with `collectSubtree()` BFS that recursively collects all descendants before removal.
 
-### Documentation
-
-- README updated Graph Interactions and Understanding the Graph tables, updated detail panel tab list.
-- CHANGELOG updated.
-
 ---
 
 ## v2.0 - 2026-07-22
@@ -79,13 +69,12 @@
 - Host matching switched from `agent.name` to `data.win.system.computer` - the former goes stale after an endpoint rename without agent re-registration.
 - Sysmon correlation added: EventID 1 (hashes, ProcessGuid, integrity, product/company), EventID 3 (network connections, TCP/UDP only), EventID 7 (loaded DLLs), EventID 11 (created files). Each 4688-based node is enriched, never duplicated. Every enrichment section in the side panel is labeled with its source EventID.
 - PID/PPID now displayed exactly as logged (raw hex) instead of converted to decimal - matches the Wazuh Discover query one-for-one during triage. Hex-to-decimal conversion is used only internally, to bridge PID formats when correlating with Sysmon.
-- Discover deep link generation fixed to use Lucene query syntax and `data.win.system.computer` for host matching.
+- Discover deep link generation fixed to use Lucene query syntax.
 
 ### UI / UX
 
 - Fixed initial zoom: replaced `vis-network`'s native `fit()` (capped at 1:1, cannot zoom in) with a custom zoom-to-fit computed from the actual node layout.
 - Subtree drag replaced with a spring/wave animation - depth-based easing instead of rigid lockstep movement.
-- Added a GitHub repository link directly under the title bar.
 
 ### Production Readiness
 
