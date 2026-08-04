@@ -27,7 +27,7 @@
 
 ### Documentation
 
-- README updated: date 2026-08-03, Wazuh 4.14.4 only, OSD 2.19.4, new sections for OSD plugin, Windows Audit EIDs, EventID field, archive scan, PROCESS FILTER.
+- README updated: date 2026-08-03, This project has been tested only on Wazuh 4.14.4, OSD 2.19.4, new sections for OSD plugin, Windows Audit EIDs, EventID field, archive scan, PROCESS FILTER.
 - CHANGELOG updated.
 
 ---
@@ -66,7 +66,7 @@
 
 ### Documentation
 
-- README updated to v2.1: removed "What's New" historical sections, updated Graph Interactions and Understanding the Graph tables, updated detail panel tab list.
+- README updated Graph Interactions and Understanding the Graph tables, updated detail panel tab list.
 - CHANGELOG updated.
 
 ---
@@ -79,14 +79,12 @@
 - Host matching switched from `agent.name` to `data.win.system.computer` - the former goes stale after an endpoint rename without agent re-registration.
 - Sysmon correlation added: EventID 1 (hashes, ProcessGuid, integrity, product/company), EventID 3 (network connections, TCP/UDP only), EventID 7 (loaded DLLs), EventID 11 (created files). Each 4688-based node is enriched, never duplicated. Every enrichment section in the side panel is labeled with its source EventID.
 - PID/PPID now displayed exactly as logged (raw hex) instead of converted to decimal - matches the Wazuh Discover query one-for-one during triage. Hex-to-decimal conversion is used only internally, to bridge PID formats when correlating with Sysmon.
-- Discover deep link generation fixed to use Lucene query syntax (KQL returned zero hits in production) and `data.win.system.computer` for host matching.
+- Discover deep link generation fixed to use Lucene query syntax and `data.win.system.computer` for host matching.
 
 ### UI / UX
 
 - Fixed initial zoom: replaced `vis-network`'s native `fit()` (capped at 1:1, cannot zoom in) with a custom zoom-to-fit computed from the actual node layout.
 - Subtree drag replaced with a spring/wave animation - depth-based easing instead of rigid lockstep movement.
-- Removed all icons/emoji from the interface (title bar tree icon removed).
-- Page title changed to "Threat Hunting & Incident Response" (spelled out) - not "DFIR", since DFIR does not cover the proactive-hunting use case this tool supports.
 - Added a GitHub repository link directly under the title bar.
 
 ### Production Readiness
@@ -94,10 +92,9 @@
 - Replaced Flask's built-in development server with `gunicorn` (4 workers, 120s timeout) as the WSGI server invoked by the systemd unit.
 - `WAZUH_DASHBOARD_BASE_URL` no longer hardcodes an IP; it auto-detects from `window.location.hostname`.
 - `requirements.txt` updated with `gunicorn==23.0.0`.
-- `wazuh-process-tree.service` comments translated to English; `ExecStart` updated to invoke gunicorn directly.
+- `ExecStart` updated to invoke gunicorn directly.
 
 ### Sysmon Ruleset (companion project)
 
 - Migrated the validation environment to [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs).
 - Found and fixed a missing `-enc` abbreviation in the PowerShell Base64-encoded-command detection (rules `92057`/`92059`/`92071`).
-- Found and documented (not yet fixed) a missing end-of-string anchor in rule `92213`, which misclassifies legitimate `.json` files as executables.
