@@ -534,18 +534,6 @@ Multiple PowerShell child instances created by a parent PowerShell - rule 92027,
 
 ---
 
-### Top Parent Processes - Frequency Chart
-
-![Top Parent Processes Frequency Chart](img/tpp_freq.png)
-
----
-
-### Process List - 152 Processes from services.exe
-
-![Process List - services.exe](img/process_list.png)
-
----
-
 ## Integrity Reference (v2.1 - 2026-08-05)
 
 SHA256 hashes of the production files. Verify after any update:
