@@ -577,7 +577,7 @@ This project is under active development and will continue to evolve. The destin
 
 [@AwwalQuan](https://github.com/AwwalQuan)
 
-[Wazuh - Open The Open Source Security Platform (Unified XDR and SIEM)](https://wazuh.com/?utm_source=ambassadors&utm_medium=referral&utm_campaign=ambassadors%20program)
+[Wazuh - The Open Source Security Platform (Unified XDR and SIEM)](https://wazuh.com/?utm_source=ambassadors&utm_medium=referral&utm_campaign=ambassadors%20program)
 
 [Ambassadors Program | Wazuh](https://wazuh.com/ambassadors-program/?utm_source=ambassadors&utm_medium=referral&utm_campaign=ambassadors+program)
 
