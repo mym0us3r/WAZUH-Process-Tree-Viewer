@@ -439,13 +439,19 @@ wptv.logic: build_tree done in 0.256s: 4112 nodes, 4094 edges
 ### EXPORT PDF
 
 Click **EXPORT PDF** in the toolbar to generate a forensic report.
+![Export PDF](img/export_pdf.png)
 
 **Full Report** (no node selected):
 
 - Page 1: Executive Summary and Acknowledgements
 - Page 2: Summary table of all Parent Processes (name, user, host, child process count)
 - Detail pages: one page per process tree with a full table of all nodes (Process, Parent, User, Host), including nodes hidden behind +MORE buttons
+
+![Process List - services.exe](img/process_list.png)
+
 - Last page: Top Parent Processes frequency pie chart with labeled slices and two-column legend
+
+![Top Parent Processes Frequency Chart](img/tpp_freq.png)
 
 **Branch Report** (node selected before clicking EXPORT PDF):
 
@@ -525,6 +531,18 @@ PowerShell spawning `net.exe`, `net1.exe`, `netstat.exe`, `whoami.exe`, `ipconfi
 Multiple PowerShell child instances created by a parent PowerShell - rule 92027, Sysmon EID 1, MITRE T1059.001 level 4.
 
 ![PowerShell Spawned PowerShell](img/ps-spawned.png)
+
+---
+
+### Top Parent Processes - Frequency Chart
+
+![Top Parent Processes Frequency Chart](img/tpp_freq.png)
+
+---
+
+### Process List - 152 Processes from services.exe
+
+![Process List - services.exe](img/process_list.png)
 
 ---
 
