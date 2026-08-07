@@ -52,26 +52,28 @@ WPTV consists of two independent components:
 - `target/public/wptv.plugin.js.gz`: Compressed bundle
 
 **Mode 1 - Standalone (direct browser access)**
-
+ 
 ```
 Browser
   |
-  +-- https://IP:5000  (direct, no nginx required)
+  +-- https://IP:5000  (direct, no Nginx required)
         |
   Flask + Gunicorn Backend (:5000, TLS)
         |
-        +----------------+----------------+
-        |                                 |
-  Wazuh Indexer                   archives.json
-    (Primary)                   alerts.json (fallback)
+        +--------------------+--------------------+--------------------+
+        |                    |                    |                    |
+  Wazuh Indexer       wazuh-archives-*      archives.json        alerts.json
+  wazuh-alerts-*        (Supplement)     (file scan fallback)   (last resort)
+    (Primary)
 ```
-
+ 
 **Mode 2 - Integrated into Wazuh Dashboard**
-
+ 
 ```
 Browser
   |
-  +-- https://IP:443 - https://IP/app/wptv (Wazuh Dashboard / OSD)
+  +-- https://IP:443  (Wazuh Dashboard / OSD)
+  |   https://IP/app/wptv
         |
         OpenSearch Dashboards Plugin (wptv.plugin.js)
         Sidebar: Forensics -> Wazuh Process Tree Viewer
@@ -84,10 +86,11 @@ Browser
         |
   Flask + Gunicorn Backend (:5000, TLS)
         |
-        +----------------+----------------+
-        |                                 |
-  Wazuh Indexer                   archives.json
-    (Primary)                   alerts.json (fallback)
+        +--------------------+--------------------+--------------------+
+        |                    |                    |                    |
+  Wazuh Indexer       wazuh-archives-*      archives.json        alerts.json
+  wazuh-alerts-*        (Supplement)     (file scan fallback)   (last resort)
+    (Primary)
 ```
 
 > **Note:** In Mode 2, Nginx is required. The OSD plugin embeds WPTV via iframe - since OSD serves over HTTPS (:443), the iframe source must also be HTTPS to avoid mixed-content blocking. In Mode 1, you can access the backend directly at `:5000` without Nginx.
