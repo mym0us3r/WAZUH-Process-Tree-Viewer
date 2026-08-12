@@ -598,6 +598,7 @@ function buildDiscoverLink(meta) {
     const luceneParts = [];
     let fromIso, toIso;
 
+    let discoverIndex = WAZUH_DISCOVER_DATA_VIEW_ID;
     if (meta.observed) {
         // observed node (child or a parent that had its own event): search the
         // exact event via rule/event id, in the same window already queried
@@ -609,12 +610,28 @@ function buildDiscoverLink(meta) {
         // itself), not agent.name - agent.name is Wazuh's cached registration
         // name and goes stale if the endpoint gets renamed or the agent gets
         // reinstalled, which is exactly what happened on this deployment
-        if (meta.host) luceneParts.push(`data.win.system.computer:"${meta.host}"`);
-        if (meta.ruleId) luceneParts.push(`rule.id:"${meta.ruleId}"`);
-        if (meta.eventId) luceneParts.push(`data.win.system.eventID:"${meta.eventId}"`);
-        // meta.pid is now the raw hex string exactly as logged (e.g. "0x235c"),
-        // no decimal conversion - it matches data.win.eventdata.newProcessId as-is
-        if (meta.pid) luceneParts.push(`data.win.eventdata.newProcessId:"${meta.pid}"`);
+        if (meta.sysmon_only) {
+            // Ghost node: process born before the queried window.
+            // data.win.system.processID (decimal) is the field that
+            // EID 4104 and other Windows Audit events populate.
+            // Index: wazuh-archives-* where ghost-node detections originate.
+            if (meta.host && meta.host !== 'N/A')
+                luceneParts.push(`data.win.system.computer:"${meta.host}"`);
+            if (meta.pid) {
+                const decPid = parseInt(meta.pid, 16);
+                if (!isNaN(decPid))
+                    luceneParts.push(`data.win.system.processID:"${decPid}"`);
+            }
+            discoverIndex = 'wazuh-archives-*';
+        } else {
+            // Observed child node: host + process path (newProcessName).
+            if (meta.host && meta.host !== 'N/A') luceneParts.push(`data.win.system.computer:"${meta.host}"`);
+            if (meta.fullPath && meta.fullPath !== 'N/A') {
+                luceneParts.push(`data.win.eventdata.newProcessName:"${meta.fullPath.replace(/\\/g, '\\\\')}"`);
+            } else if (meta.name) {
+                luceneParts.push(`data.win.eventdata.newProcessName:*${meta.name}*`);
+            }
+        }
     } else {
         // synthetic "Parent Process" node: by definition it has no event inside
         // the queried window (that is why it has no rule/event id at all), so
@@ -653,7 +670,7 @@ function buildDiscoverLink(meta) {
     // of this is percent-encoded, same as the link the Dashboards UI itself
     // produces - if a future Dashboards version changes this shape, copy a
     // fresh "Share" link from Discover and diff it against this template.
-    const a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${WAZUH_DISCOVER_DATA_VIEW_ID}',view:discover))`;
+    const a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${discoverIndex}',view:discover))`;
     const q = `(filters:!(),query:(language:lucene,query:'${luceneQuery}'))`;
     const g = `(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${fromIso}',to:'${toIso}'))`;
 
@@ -679,7 +696,7 @@ function getDescendants(nodeId) {
 }
 
 
-// ── computeLRTreeLayout: O(N) com memoização (não O(N²)) ─────────────────
+// ── computeLRTreeLayout: O(N) with memoization (not O(N²)) ─────────────────
 // Positions multiple trees in a grid (3 columns). subtreeH uses memoisation to
 // avoid recomputing heights for graphs with 2000+ nodes (which froze the browser).
 function computeLRTreeLayout(nodes, edges) {
@@ -1447,17 +1464,27 @@ function showDetailPanel(nodeId) {
 
             // Build Discover link for this specific Sysmon event
             let discoverUrl = '';
-            if (WAZUH_DASHBOARD_BASE_URL && WAZUH_DISCOVER_DATA_VIEW_ID) {
+            let indexPattern = WAZUH_DISCOVER_DATA_VIEW_ID;
+            if (WAZUH_DASHBOARD_BASE_URL) {
+                indexPattern = d.sourceIndex || WAZUH_DISCOVER_DATA_VIEW_ID;
                 const parts = [`data.win.system.eventID:"${d.eventId}"`];
                 if (d.computer && d.computer !== 'N/A')
                     parts.push(`data.win.system.computer:"${d.computer}"`);
                 if (d.ruleId && d.ruleId !== 'N/A')
                     parts.push(`rule.id:"${d.ruleId}"`);
-                if (meta.pid)
+                // Use the PID field and value sent by the backend — avoids
+                // hardcoding field names that differ by event type (EID 4104
+                // stores PID in data.win.system.processID, not eventdata).
+                if (d.pidField && d.pidValue) {
+                    parts.push(`${d.pidField}:"${d.pidValue}"`);
+                } else if (meta.pid) {
+                    // Fallback: legacy Sysmon decimal conversion
                     parts.push(`data.win.eventdata.processId:"${parseInt(meta.pid, 16)}"`);
+                }
                 const lucene = parts.join(' AND ');
                 const activeW = getActiveTimeWindowIso();
-                const _a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${WAZUH_DISCOVER_DATA_VIEW_ID}',view:discover))`;
+                // Use the index where the event was actually found, not always wazuh-alerts-*
+                const _a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${indexPattern}',view:discover))`;
                 const _q = `(filters:!(),query:(language:lucene,query:'${lucene}'))`;
                 const _g = `(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${activeW.fromIso}',to:'${activeW.toIso}'))`;
                 discoverUrl = `${WAZUH_DASHBOARD_BASE_URL}/app/data-explorer/discover#?_a=${_a}&_q=${_q}&_g=${_g}`;
@@ -1469,7 +1496,7 @@ function showDetailPanel(nodeId) {
             const link = safeUrl1
                 ? `<a href="${safeUrl1}" target="_blank" rel="noopener"
                       style="color:#00a0d1;font-size:10px;text-decoration:none;">
-                     Open EID ${d.eventId} in Discover &#8594;</a>` : '';
+                     Open EID ${d.eventId} in Discover (${indexPattern}) &#8594;</a>` : '';
 
             return `<div style="border-left:3px solid ${levelColor};padding:7px 10px;margin-bottom:8px;background:#1a202c;border-radius:0 4px 4px 0;">
   <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">
@@ -1487,7 +1514,7 @@ function showDetailPanel(nodeId) {
 </div>`;
         });
         sysmonDetsBox.innerHTML = `<div style="font-size:11px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #374151;padding-bottom:4px;margin-bottom:8px;">
-  &#9650; SYSMON RULE DETECTIONS (${sysmonDets.length})</div>${cards.join('')}`;
+  &#9650; DETECTION EVENTS (${sysmonDets.length})</div>${cards.join('')}`;
         sysmonDetsBox.style.display = 'block';
         hasDetections = true;
     } else {
@@ -1593,7 +1620,7 @@ async function loadComments() {
     const pid = (currentDetailMeta && currentDetailMeta.pid) || currentDetailNodeId.replace('P', '');
     const identity = buildIdentityParams();
     try {
-        const res = await fetch(`/api/comments?pid=${encodeURIComponent(pid)}&${identity || ''}`);
+        const res = await fetch(`/wptv/api/comments?pid=${encodeURIComponent(pid)}&${identity || ''}`);
         const data = await res.json();
         renderComments(data.comments || []);
     } catch (e) {
@@ -1611,7 +1638,7 @@ async function submitComment() {
     const ip = document.getElementById('ipInput').value.trim();
     const author = getAnalystName();
     try {
-        const res = await fetch('/api/comments', {
+        const res = await fetch('/wptv/api/comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pid, text, author, agent_id: agentId, host, ip }),
@@ -2145,7 +2172,7 @@ async function loadTree() {
     const fetchStart = performance.now();
 
     try {
-        const response = await fetch(`/api/process-tree?${identityParams}&filter=${filter}&${buildRangeParams()}${eventId ? '&event_id=' + encodeURIComponent(eventId) : ''}`);
+        const response = await fetch(`/wptv/api/process-tree?${identityParams}&filter=${filter}&${buildRangeParams()}${eventId ? '&event_id=' + encodeURIComponent(eventId) : ''}`);
         const data = await response.json();
         const fetchMs = Math.round(performance.now() - fetchStart);
 
@@ -2511,7 +2538,7 @@ async function handleNodeClick(params) {
     if (!identityParams) return;
 
     try {
-        const response = await fetch(`/api/process-tree/expand?${identityParams}&pid=${pid}&${buildRangeParams()}`);
+        const response = await fetch(`/wptv/api/process-tree/expand?${identityParams}&pid=${pid}&${buildRangeParams()}`);
         const data = await response.json();
 
         if (!data.nodes || !data.nodes.length) return;
