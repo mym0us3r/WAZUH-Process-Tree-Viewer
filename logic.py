@@ -73,10 +73,20 @@ WINDOWS_AUDIT_DETECTION_EIDS = frozenset({
     '4768',  # Kerberos TGT requested (Kerberoasting / Golden Ticket)
     '4769',  # Kerberos service ticket requested (lateral movement)
     '4771',  # Kerberos pre-auth failed (credential attacks)
+    '4689',  # Process Termination - correlates end-of-life to existing tree nodes
     '4776',  # NTLM credential validation (Pass-the-Hash / NTLM relay)
     '4964',  # Special groups assigned to new logon (privileged group monitoring)
     '7045',  # New service installed (T1543 persistence)
 })
+
+# Hard time budget for the archives.json file scan (fallback path).
+# When the Wazuh archive index (wazuh-archives-*) is available this scan is
+# never reached. When it IS reached (no archive index configured), large time
+# windows (>14 days) can produce hundreds of thousands of lines in compressed
+# .gz files, exceeding gunicorn's --timeout and triggering a SIGKILL.
+# Stopping early is safer than losing the entire response — whatever was
+# collected before the timeout is returned to the caller with a warning.
+ARCHIVE_SCAN_TIMEOUT = 90  # seconds
 
 # Combined gate: all EIDs that WPTV surfaces in the Alerts tab.
 ALL_DETECTION_EIDS = SYSMON_ALL_DETECTION_EIDS | WINDOWS_AUDIT_DETECTION_EIDS
@@ -357,17 +367,21 @@ class ProcessTreeLogic:
                         except Exception:
                             continue
 
-                        # PID correlation
-                        pid = ev.get('processId') or ev.get('newProcessId')
+                        _pid_ev2  = ev.get('processId') or ev.get('newProcessId') or ev.get('targetProcessId')
+                        _pid_sys2 = sys_f.get('processID') if not _pid_ev2 else None
+                        pid = self._normalize_pid(_pid_ev2 or _pid_sys2)
                         if not pid:
                             continue
-                        pid = str(pid).lower()
+                        _pid_field2 = ('data.win.system.processID'
+                                       if _pid_sys2 and not _pid_ev2
+                                       else 'data.win.eventdata.processId')
+                        _pid_value2 = str(_pid_ev2 or _pid_sys2 or '')
 
                         ts_key = (ts_raw, str(event_id))
                         if ts_key in existing_keys:
                             continue   # already captured from alerts
 
-                        # Build detection entry — rule may be absent or generic
+                        # Build detection entry
                         rule_s = evt.get('rule', {})
                         rid    = rule_s.get('id', '')
                         entry  = {
@@ -376,14 +390,16 @@ class ProcessTreeLogic:
                             'ruleLevel': int(rule_s.get('level') or 0),
                             'ruleDesc':  (rule_s.get('description', '')
                                           if rid not in GENERIC_RULES
-                                          else f'Sysmon EID {event_id} (archive)'),
+                                          else f'EID {event_id} (archive)'),
                             'mitre':     rule_s.get('mitre', {}),
-                            'providerName': sys_f.get('providerName',
-                                                       'Microsoft-Windows-Sysmon'),
+                            'providerName': sys_f.get('providerName', 'Microsoft-Windows-Sysmon'),
                             'time':      ts_raw,
                             'computer':  sys_f.get('computer', ''),
                             'image':     ev.get('image', ev.get('imageLoaded',
                                          ev.get('targetFilename', ''))),
+                            'pidField':  _pid_field2,
+                            'pidValue':  _pid_value2,
+                            'sourceIndex': 'wazuh-archives-*',
                             'source':    'archive',
                         }
                         supplement.setdefault(pid, []).append(entry)
@@ -392,9 +408,194 @@ class ProcessTreeLogic:
             except Exception as exc:
                 logger.warning('archive scan error on %s: %s', path, exc)
 
+            # Hard timeout guard: stop before gunicorn's SIGKILL.
+            # Large windows (>14 days) can push hundreds of .gz files into this
+            # loop; ARCHIVE_SCAN_TIMEOUT gives the caller a partial result rather
+            # than a worker crash. The archive index path (wazuh-archives-*) avoids
+            # this entirely — enable it via WPTV_ARCHIVE_INDEX for long queries.
+            if _time.monotonic() - t0 > ARCHIVE_SCAN_TIMEOUT:
+                logger.warning(
+                    'archive file scan timeout after %.0fs (processed %d/%d files) - '
+                    'stopping early. Enable wazuh-archives-* index for full coverage '
+                    'on large time windows.',
+                    _time.monotonic() - t0, archive_paths.index(path) + 1, len(archive_paths))
+                break
+
         elapsed = _time.monotonic() - t0
         logger.info('archive sysmon scan: %d lines, %d skipped, %d new events in %.2fs (files: %d)',
                     lines_read, skipped, found, elapsed, len(archive_paths))
+        return supplement
+
+    def _normalize_pid(self, pid_raw):
+        """
+        Normalize a PID value to a decimal string for consistent enrichment lookup.
+
+        Sysmon events report PIDs as decimal integers ('18564').
+        Windows Audit events report PIDs as hex strings ('0x4884').
+        EID 4688 (newProcessId) is also hex.
+
+        All of these must resolve to the same key so that _enrich() can find
+        detections from ANY event type when looking up a tree node by its PID.
+        Returns None when the input is empty or unparseable.
+        """
+        if not pid_raw:
+            return None
+        s = str(pid_raw).strip().lower()
+        try:
+            if s.startswith('0x'):
+                return str(int(s, 16))
+            return str(int(float(s)))   # handles '18564' and edge-case floats
+        except (ValueError, TypeError):
+            return s   # return as-is; caller will get a cache-miss, not a crash
+
+    def _fetch_from_archive_index(self, agent_id, host, ip, start_dt, end_dt, existing_enrichment):
+        """
+        Query wazuh-archives-* (OpenSearch) for ALL_DETECTION_EIDS events that
+        are NOT already captured in existing_enrichment (alerts already indexed).
+
+        wazuh-archives-* contains EVERY event forwarded by Filebeat regardless
+        of whether it triggered a Wazuh rule.  This is the fast path for events
+        such as EID 4689 (Process Termination) and EID 4104 (PowerShell Script
+        Block) that may not generate alerts but are still valuable for forensic
+        correlation in the process tree.
+
+        Prerequisites on the Wazuh server:
+            filebeat.yml:  archives.enabled: true
+            OSD:           Index pattern wazuh-archives-* created in
+                           Dashboards Management > Index Patterns
+
+        Enabled when WPTV_ARCHIVE_INDEX is set (default: wazuh-archives-*).
+        Set WPTV_ARCHIVE_INDEX= (empty) to disable and force the file scan.
+        """
+        import requests as _req
+
+        url        = os.getenv('WPTV_INDEXER_URL', '').rstrip('/')
+        arc_index  = os.getenv('WPTV_ARCHIVE_INDEX', 'wazuh-archives-*').strip()
+        user       = os.getenv('WPTV_INDEXER_USER', '')
+        pwd        = os.getenv('WPTV_INDEXER_PASSWORD', '')
+        ca         = os.getenv('WPTV_INDEXER_CA_CERT', '')
+
+        if not url:
+            raise EnvironmentError("WPTV_INDEXER_URL not set")
+        if not arc_index:
+            raise EnvironmentError("WPTV_ARCHIVE_INDEX explicitly disabled (empty)")
+
+        # Deduplicate against events already found in wazuh-alerts-*
+        existing_keys = set()
+        for pid_dets in existing_enrichment.get('sysmon_detections', {}).values():
+            for d in pid_dets:
+                existing_keys.add((d.get('time', ''), str(d.get('eventId', ''))))
+
+        # Query for ALL detection EIDs except 4688 (tree structure comes from alerts)
+        arc_eids = list(ALL_DETECTION_EIDS - {'4688'})
+
+        must = [
+            {'range': {'timestamp': {
+                'gte': start_dt.isoformat(),
+                'lte': end_dt.isoformat()
+            }}},
+            {'terms': {'data.win.system.eventID': arc_eids}},
+        ]
+        if agent_id:
+            must.append({'term': {'agent.id': agent_id}})
+        elif host:
+            must.append({'match_phrase': {'data.win.system.computer': host}})
+        elif ip:
+            must.append({'term': {'agent.ip': ip}})
+
+        GENERIC_RULES = {'67027', '61612', '67020', '60012', '60010', '', 'N/A'}
+        supplement   = {}
+        total_hits   = 0
+        page         = 0
+        search_after = None
+        t0           = _time.monotonic()
+
+        while page < 20:   # safety cap: 20 × 5000 = 100k events
+            query = {
+                'size': 5000,
+                'sort': [{'timestamp': {'order': 'asc'}}, {'_id': {'order': 'asc'}}],
+                'query': {'bool': {'must': must}},
+                '_source': True,
+            }
+            if search_after:
+                query['search_after'] = search_after
+
+            resp = _req.post(
+                f"{url}/{arc_index}/_search",
+                json=query,
+                auth=(user, pwd) if user else None,
+                verify=ca if ca else False,
+                timeout=30
+            )
+            resp.raise_for_status()
+            hits = resp.json().get('hits', {}).get('hits', [])
+            if not hits:
+                break
+
+            page        += 1
+            total_hits  += len(hits)
+
+            for h in hits:
+                doc      = h['_source']
+                data_win = doc.get('data', {}).get('win', {})
+                sys_f    = data_win.get('system', {})
+                ev       = data_win.get('eventdata', {})
+                event_id = sys_f.get('eventID', '')
+
+                if event_id not in ALL_DETECTION_EIDS or event_id == '4688':
+                    continue
+
+                ts_raw = doc.get('timestamp', '')
+                ts_key = (ts_raw, str(event_id))
+                if ts_key in existing_keys:
+                    continue
+
+                # Track which field held the PID — needed to build a correct
+                # Discover link later (field name differs by event type).
+                _pid_ev  = ev.get('processId') or ev.get('newProcessId') or ev.get('targetProcessId')
+                _pid_sys = sys_f.get('processID') if not _pid_ev else None
+                pid = self._normalize_pid(_pid_ev or _pid_sys)
+                if not pid:
+                    continue
+                _pid_field = ('data.win.system.processID'
+                              if _pid_sys and not _pid_ev
+                              else 'data.win.eventdata.processId')
+                _pid_value = str(_pid_ev or _pid_sys or '')
+
+                rule_s = doc.get('rule', {})
+                rid    = rule_s.get('id', '')
+                entry  = {
+                    'eventId':      event_id,
+                    'ruleId':       rid if rid not in GENERIC_RULES else '',
+                    'ruleLevel':    int(rule_s.get('level') or 0),
+                    'ruleDesc':     (rule_s.get('description', '')
+                                    if rid not in GENERIC_RULES
+                                    else f'EID {event_id} (archive index)'),
+                    'mitre':        rule_s.get('mitre', {}),
+                    'providerName': sys_f.get('providerName', 'Windows'),
+                    'time':         ts_raw,
+                    'computer':     sys_f.get('computer', ''),
+                    'image':        ev.get('image',
+                                    ev.get('processName',
+                                    ev.get('imageLoaded',
+                                    ev.get('targetFilename', '')))),
+                    'pidField':     _pid_field,
+                    'pidValue':     _pid_value,
+                    'sourceIndex':  arc_index,
+                    'source':       'archive_index',
+                }
+                supplement.setdefault(pid, []).append(entry)
+                existing_keys.add(ts_key)
+
+            if len(hits) < 5000:
+                break   # last page
+            search_after = hits[-1].get('sort')
+
+        elapsed = _time.monotonic() - t0
+        new_dets = sum(len(v) for v in supplement.values())
+        logger.info(
+            'archive index scan: %d hits, %d pages, %d new detections (%d pids) in %.2fs',
+            total_hits, page, new_dets, len(supplement), elapsed)
         return supplement
 
     def fetch_events_and_enrichment(self, agent_id=None, hours_back=24, start=None, end=None, host=None, ip=None):
@@ -443,7 +644,13 @@ class ProcessTreeLogic:
                     if host and host.lower() not in sys_f.get('computer', '').lower():
                         continue
                     ev = data_win.get('eventdata', {})
-                    pid = ev.get('processId')
+                    _pid_ev3  = ev.get('processId') or ev.get('newProcessId')
+                    _pid_sys3 = sys_f.get('processID') if not _pid_ev3 else None
+                    pid = _pid_ev3 or _pid_sys3
+                    _pid_field3 = ('data.win.system.processID'
+                                   if _pid_sys3 and not _pid_ev3
+                                   else 'data.win.eventdata.processId')
+                    _pid_value3 = str(_pid_ev3 or _pid_sys3 or '')
                     if is_4688:
                         events.append(item)
                     elif is_sysmon and pid:
@@ -491,23 +698,57 @@ class ProcessTreeLogic:
                                     'providerName': sys_f.get('providerName', 'Microsoft-Windows-Sysmon'),
                                     'time': item.get('timestamp', 'N/A'),
                                     'computer': sys_f.get('computer', 'N/A'),
-                                    'image': ev.get('image', ev.get('imageLoaded', ev.get('targetFilename', 'N/A')))})
+                                    'image': ev.get('image', ev.get('imageLoaded', ev.get('targetFilename', 'N/A'))),
+                                    'pidField': _pid_field3,
+                                    'pidValue': _pid_value3,
+                                    'sourceIndex': os.getenv('WPTV_INDEXER_INDEX', 'wazuh-alerts-*'),
+                                    'source': 'alerts'})
                 elapsed = _time.monotonic() - t0
                 logger.info("fetch done in %.2fs: %d 4688 events, %d sysmon events (Indexer)",
                             elapsed, len(events), sum(len(v) for v in enrichment.values()))
 
-                # ── Supplement with archives for Sysmon events without rules ──
-                # The Indexer only has events that triggered a Wazuh rule.
-                # Archives have ALL events — critical for Threat Hunting.
-                archive_sup = self._fetch_sysmon_from_archives(
-                    agent_id, host, ip, start_dt, end_dt, enrichment)
+                # ── Supplement: events without Wazuh rules (archives) ────────
+                # wazuh-alerts-* only has events that triggered a rule.
+                # wazuh-archives-* has ALL events — essential for events like
+                # EID 4689 (Process Termination) and EID 4104 (PowerShell Script
+                # Block) that may not fire rules but are in ALL_DETECTION_EIDS.
+                #
+                # Priority:
+                #   1. wazuh-archives-* OpenSearch index  (fast, requires
+                #      filebeat archives.enabled: true + index pattern in OSD)
+                #   2. archives.json filesystem scan       (slower fallback)
+                archive_sup    = {}
+                archive_source = 'none'
+                arc_index_env  = os.getenv('WPTV_ARCHIVE_INDEX', 'wazuh-archives-*').strip()
+
+                if arc_index_env:
+                    # Fast path: OpenSearch archive index
+                    try:
+                        archive_sup    = self._fetch_from_archive_index(
+                            agent_id, host, ip, start_dt, end_dt, enrichment)
+                        archive_source = 'index'
+                    except Exception as arc_e:
+                        logger.info(
+                            "archive index unavailable (%s) - falling back to file scan",
+                            arc_e)
+                        archive_sup    = self._fetch_sysmon_from_archives(
+                            agent_id, host, ip, start_dt, end_dt, enrichment)
+                        archive_source = 'file'
+                else:
+                    # WPTV_ARCHIVE_INDEX explicitly disabled: use file scan
+                    archive_sup    = self._fetch_sysmon_from_archives(
+                        agent_id, host, ip, start_dt, end_dt, enrichment)
+                    archive_source = 'file'
+
                 if archive_sup:
                     for pid, dets in archive_sup.items():
                         db = enrichment['sysmon_detections'].setdefault(pid, [])
                         db.extend(dets)
-                    logger.info("archive supplement: %d pids, %d new detections added",
-                                len(archive_sup),
-                                sum(len(v) for v in archive_sup.values()))
+                    logger.info(
+                        "archive supplement (%s): %d pids, %d new detections added",
+                        archive_source,
+                        len(archive_sup),
+                        sum(len(v) for v in archive_sup.values()))
 
                 return events, enrichment
             except Exception as e:
@@ -1080,9 +1321,48 @@ class ProcessTreeLogic:
                 image = (sysmon_enrichment.get('sysmon_images', {}).get(dec_pid) or
                          (sysmon_enrichment.get('process', {}).get(dec_pid) or {}).get('image'))
                 if not image or image == 'N/A':
+                    # No Sysmon image available — try to infer the process
+                    # from Windows Audit detections (e.g. EID 4104 from
+                    # Microsoft-Windows-PowerShell → powershell.exe).
+                    # This allows ghost nodes for processes like PowerShell
+                    # that were opened before the queried time window but
+                    # have detections (script block logging, clipboard, etc.)
+                    # inside it — covering the 'pecar pelo excesso' case.
+                    _PROVIDER_PROC = {
+                        'Microsoft-Windows-PowerShell':            'powershell.exe',
+                        'Microsoft-Windows-PowerShell/Operational': 'powershell.exe',
+                        'PowerShell':                               'powershell.exe',
+                    }
+                    _dets = sysmon_enrichment.get('sysmon_detections', {}).get(dec_pid, [])
+                    _provider = next((d.get('providerName', '') for d in _dets), '')
+                    _inferred = _PROVIDER_PROC.get(_provider)
+                    if not _inferred:
+                        continue
+                    image = _inferred
+
+
+                # Apply PROCESS FILTER to ghost nodes — without this,
+                # a filter for 'powershell' would still show chrome.exe
+                # ghost nodes because ghost nodes were added after the
+                # main filter pass that operates on EID 4688 events.
+                if search_filter and search_filter not in image.lower():
                     continue
 
+
                 name = self._win_basename(image)
+
+                # Extract host from sysmon_detections — ghost nodes have no
+                # EID 4688 so meta.host would be 'N/A' without this, breaking
+                # the Discover link (computer:"N/A" returns zero results).
+                _ghost_dets = sysmon_enrichment.get('sysmon_detections', {}).get(dec_pid, [])
+                _ghost_host = next(
+                    (d.get('computer') for d in _ghost_dets
+                     if d.get('computer') and d.get('computer') not in ('N/A', '')),
+                    'N/A'
+                )
+                # Decimal PID for Discover link (system.processID stores decimal)
+                _ghost_dec_pid = dec_pid
+
                 try:
                     hex_pid = hex(int(dec_pid))
                 except (ValueError, TypeError):
@@ -1124,7 +1404,7 @@ class ProcessTreeLogic:
                         'cmd': sysmon_proc.get('commandLine', 'N/A'),
                         'user': sysmon_proc.get('user', 'N/A'),
                         'targetUser': 'N/A',
-                        'host': 'N/A',
+                        'host': _ghost_host,
                         'ip': 'N/A',
                         'time': sysmon_proc.get('utcTime', 'N/A'),
                         'eventId': '1',
@@ -1221,11 +1501,26 @@ class ProcessTreeLogic:
                                          for d in n.get('meta', {}).get('detections', []))}
 
             else:
-                # All other EIDs: look for them in the node's detections list.
+                # All other EIDs: check both detection buckets.
+                #
+                # meta.detections        -> Wazuh rule alerts from EID 4688
+                #                          events (populated by _parse_latest)
+                # meta.sysmon_detections -> Sysmon + Windows Audit events from
+                #                          Indexer and archive sources
+                #                          (populated by _enrich). This is where
+                #                          EID 4104, 4689 and other non-4688
+                #                          events land after archive indexing.
+                #
+                # Checking only meta.detections was the reason EID 4104/4689
+                # filters returned zero nodes even when the archive index had
+                # correctly loaded those events into sysmon_detections.
                 nodes_with_eid = {
                     n['id'] for n in nodes_list
                     if any(str(d.get('eventId', '')) == eid_str
-                           for d in n.get('meta', {}).get('detections', []))
+                           for d in (
+                               n.get('meta', {}).get('detections', []) +
+                               n.get('meta', {}).get('sysmon_detections', [])
+                           ))
                 }
             if nodes_with_eid:
                 # Build children map to traverse subtrees
@@ -1316,4 +1611,3 @@ class ProcessTreeLogic:
         for child_pid, d in latest.items():
             if d['ppid'] == pid:
                 nodes_map[f"P{child_pid}"] = self._make_node(child_pid, d, sysmon_enrichment=sysmon_enrichment)
-
