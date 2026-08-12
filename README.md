@@ -387,8 +387,21 @@ SHA256 hashes of production files:
 | `wptv.plugin.js` | `plugins/wptv/target/public/` | `7e58f27c9a1a56752db4c58c80bac191e856a374a67e28159d8a2b62e0595888` |
 | `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `373722d0d9ff08d50fc9fe160996b18b56f65a571f315d6edaf606ce067d1ef5` |
 
-## Special Thanks
-Special thanks to the entire **Wazuh Community**, the Wazuh Ambassador Program team (Katia Bukovac, Raquel Presas Salguero, and Carolina Landa), Awwal Ishiaku, William Weber, and Santiago Bassett.
+## Acknowledgements
+
+A special thank you to the entire **Wazuh Community** for their ongoing support and valuable feedback throughout the project's development.
+
+I would also like to express my sincere gratitude to the Wazuh Ambassador Program team:
+Katia Bukovac, Raquel Presas Salguero, Carolina Landa, and Francis Jeremiah - for their encouragement, trust, review, and constant support during this project.
+
+Special thanks to Awwal Ishiaku for his support throughout the development process, and to William   
+Weber for testing the project and providing valuable feedback.  
+
+Finally, a huge thank you to Santiago Bassett, CEO of Wazuh, for championing open source and building   
+a space where community-driven innovation can truly thrive.  
+
+This project reflects the collaborative spirit of the open-source community, where every suggestion,   
+discussion, and contribution helps strengthen the ecosystem for everyone.
 
 ## License
 Distributed under the MIT License. Copyright (c) 2025-2026 m0us3r.
