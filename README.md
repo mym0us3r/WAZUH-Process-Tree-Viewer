@@ -394,13 +394,13 @@ A special thank you to the entire **Wazuh Community** for their ongoing support 
 I would also like to express my sincere gratitude to the Wazuh Ambassador Program team:
 Katia Bukovac, Raquel Presas Salguero, Carolina Landa, and Francis Jeremiah - for their encouragement, trust, review, and constant support during this project.
 
-Special thanks to Awwal Ishiaku for his support throughout the development process, and to William   
+Special thanks to **Awwal Ishiaku** for his support throughout the development process, and to William   
 Weber for testing the project and providing valuable feedback.  
 
 Finally, a huge thank you to Santiago Bassett, CEO of Wazuh, for championing open source and building   
 a space where community-driven innovation can truly thrive.  
 
-This project reflects the collaborative spirit of the open-source community, where every suggestion,   
+This project reflects the **collaborative spirit of the open-source community**, where every suggestion,   
 discussion, and contribution helps strengthen the ecosystem for everyone.
 
 ## License
