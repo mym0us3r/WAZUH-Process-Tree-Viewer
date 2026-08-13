@@ -358,8 +358,19 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+### Service Logging
+
+```
+sudo mkdir -p /var/log/wazuh-process-tree
+sudo touch /var/log/wazuh-process-tree/wptv.log
+sudo chown -R wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
+sudo chmod 750 /var/log/wazuh-process-tree
+sudo chmod 640 /var/log/wazuh-process-tree/wptv.log
+
+```
+
 ### Management Commands
-```bash
+```
 sudo systemctl start wazuh-process-tree      # Start
 sudo systemctl stop wazuh-process-tree       # Stop
 sudo systemctl status wazuh-process-tree     # Check status
