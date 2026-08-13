@@ -250,7 +250,23 @@ WPTV_INDEXER_CA_CERT=/etc/wazuh-process-tree/certs/root-ca.pem
 WPTV_ARCHIVE_INDEX=wazuh-archives-*
 ```
 
-### 6. Nginx Reverse Proxy (Unified Configuration)
+--- 
+
+### Nginx Reverse Proxy (Unified Configuration)
+
+**Check whether Nginx is installed**
+
+```
+if ! command -v nginx >/dev/null 2>&1; then
+    echo "Nginx is not installed. Installing..."
+    apt update
+    apt install -y nginx
+else
+    echo "Nginx is already installed."
+fi
+```
+
+--- 
 
 Nginx terminates external HTTPS on port 443 and routes paths uniformly:
 
