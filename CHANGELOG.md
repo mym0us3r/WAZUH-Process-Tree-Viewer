@@ -35,9 +35,12 @@
 ### UI / UX & OSD Plugin
 
 - **Unified Nginx Proxy Architecture**: migrated from dedicated port 5443 to unified port 443 path-based routing (`/` -> Wazuh Dashboard on `127.0.0.1:5601`, `/wptv/` -> WPTV Gunicorn backend on `127.0.0.1:5000`), reusing the Wazuh Dashboard certificate (`wazuh-dashboard.pem`) and eliminating separate certificates or ports.
+- **Gunicorn bound to loopback only**: `wazuh-process-tree.service` now starts Gunicorn on `127.0.0.1:5000` instead of `0.0.0.0:5000`. The WPTV backend is no longer reachable from outside the host under any circumstance; Nginx is the sole externally exposed entry point.
+- **Standalone access unified through Nginx**: standalone access (previously a direct HTTPS connection to `https://<host>:5000`, bypassing Nginx) now goes through the same `/wptv/` Nginx location block used by the OSD plugin. Both access modes - standalone (`https://<host>/wptv/`) and OSD-integrated (`https://<host>/app/wptv`) - resolve to the same Gunicorn backend through a single certificate and a single external port.
 - **Native OSD Sidebar Entry**: registered WPTV as a native OSD UI Plugin (`Forensics - Wazuh Process Tree Viewer`, route `/app/wptv`) with pure DOM mounting.
 - **LR mind-map layout & vis-network improvements**: Reingold-Tilford O(N) layout with `heightCache`, rectangular box nodes, fixed color scheme, `+MORE`/`-LESS` subtree pagination, right-click filtering, and dual-mode subtree dragging.
 - **Forensic PDF Export**: jsPDF-powered report generation with Executive Summary, anti-overlap pie charts, and simplified process inventory tables (`Process | Parent | User | Host`).
+- **Architecture diagram updated**: `img/architecture-wptv.png` redrawn to reflect the unified Nginx access model - a single `/wptv/` path serving both standalone and OSD-integrated access, replacing the previous two-mode diagram that showed a direct, unproxied connection to port 5000.
 
 ### Bug Fixes
 
@@ -47,3 +50,4 @@
 - Cleaned up stale DOM element references on ANALYZE and fixed `network.once()` timing.
 - Fixed MORE node graph origin coordinates and `computeLRTreeLayout` O(N²) memory/CPU bottleneck with `heightCache`.
 - Resolved JavaScript scope initialization errors in Discover link builder.
+- Fixed frontend/backend route mismatch where `index.html` fetch calls hardcoded the `/wptv/` prefix while Gunicorn was still reachable directly on `0.0.0.0:5000` without that prefix, causing `Unexpected token '<'` JSON parse errors and TLS certificate rejections (`SSLV3_ALERT_CERTIFICATE_UNKNOWN`) from clients connecting straight to port 5000.
