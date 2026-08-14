@@ -554,11 +554,11 @@ SHA256 hashes of production files:
 
 | File | Location | SHA256 |
 |---|---|---|
-| `logic.py` | `process_tree_api/` | `c89ec61585ad08e5fb81f223d935b6d3b41eae1757a391600e949a4e6db4f53d` |
+| `logic.py` | `process_tree_api/` | `74651e27826d964125d2f22c59fdd72890a9679ab2b03352a043259e4b91abdf` |
 | `server.py` | `process_tree_api/` | `4682baf8fc58adce9f15e4bc4bad344891d00ef473703a5f9a166b47c4542b9b` |
-| `index.html` | `process_tree_api/public/` | `de7e7b5a64967ea9d8c3c44ccb96f35d27a54db6ac07230bff2776952f1b03b7` |
-| `wptv.plugin.js` | `plugins/wptv/target/public/` | `7e58f27c9a1a56752db4c58c80bac191e856a374a67e28159d8a2b62e0595888` |
-| `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `373722d0d9ff08d50fc9fe160996b18b56f65a571f315d6edaf606ce067d1ef5` |
+| `index.html` | `process_tree_api/public/` | `af06e822fe7a35960377626a142693c0b9478f583758323f31381d88264612fa` |
+| `wptv.plugin.js` | `plugins/wptv/target/public/` | `e9dbd78fc0cc30c317307b55c9309dba14fd7da9dba4ff2137b55af651d6a6a1` |
+| `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `fe211c07b875fcf0bf436cc636068040f223471b2f0f5da5f5057a3931f94005` |
 
 ## Acknowledgements
 
