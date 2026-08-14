@@ -335,7 +335,7 @@ Nginx terminates external HTTPS on port 443 and routes paths uniformly:
 cat > /etc/nginx/sites-available/wptv << 'EOF'
 server {
     listen 443 ssl;
-    server_name 192.168.1.10; # Adjust to your server IP or FQDN
+    server_name 192.168.1.X; # Adjust to your server IP or FQDN
 
     ssl_certificate     /etc/wazuh-dashboard/certs/wazuh-dashboard.pem;
     ssl_certificate_key /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem;
