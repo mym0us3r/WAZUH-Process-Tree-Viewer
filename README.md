@@ -252,8 +252,6 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" 
   }'
 ```
 
-The `cluster:monitor/main` permission allows the WPTV service account to perform the basic OpenSearch cluster information request required by the Indexer API. It does not grant administrative access to the cluster or its data.
-
 Create the user:
 
 ```bash
