@@ -32,11 +32,14 @@ The WPTV backend and data-processing architecture remain unchanged. When deployi
 
 ## Deployment Modes
 
-WPTV supports two deployment modes:
+WPTV can be reached in two ways, both served through the same unified Nginx reverse proxy on port 443:
 
-- **Mode 1 - Standalone (direct browser access)** - Direct HTTPS access to the backend at port 5000. No Nginx required. Ideal for isolated use, troubleshooting, or environments without the Wazuh Dashboard.
-  
-- **Mode 2 - Integrated into Wazuh Dashboard (OSD Plugin)** - The OSD plugin registers WPTV as a native sidebar entry. Nginx terminates external HTTPS on port 443 and routes the root path (`/`) to the Wazuh Dashboard at `127.0.0.1:5601` and `/wptv/` to the WPTV backend at `127.0.0.1:5000`. The iframe uses the same HTTPS origin, so WPTV inherits the Wazuh Dashboard certificate and no dedicated WPTV certificate needs to be imported on analyst workstations.
+- **Standalone access** - navigate directly to `https://<YOUR_WAZUH_IP>/wptv/` in the browser, outside the Wazuh Dashboard shell. Useful for isolated use or troubleshooting without opening the Dashboard.
+- **Integrated access (OSD Plugin)** - the OSD plugin registers WPTV as a native sidebar entry under Forensics, embedding the same `/wptv/` endpoint in an iframe at `/app/wptv`.
+
+Both paths resolve to the same Gunicorn backend through the Nginx `/wptv/` location block, so there is a single certificate, a single external port, and a single place to check when something breaks.
+
+> **Historical note:** in the early stage of the project (Wazuh 4.14.4, roughly seven months before v2.1), Gunicorn bound directly to `0.0.0.0:5000` and was reachable externally on that port without Nginx in front of it. That direct-port model has been retired. Since v2.1, Gunicorn binds to `127.0.0.1:5000` (loopback only, see the systemd unit below) and Nginx is the sole external entry point for both standalone and OSD-integrated access. Port 5000 is not reachable from outside the host, and any bookmark or script still pointing at `https://<host>:5000` needs to be updated to `https://<host>/wptv/`.
 
 ## Project Architecture & File Structure
 
@@ -44,7 +47,7 @@ WPTV supports two deployment modes:
   <img src="img/architecture-wptv.png" alt="Project Architecture" width="900">
 </p>
 
-> **Note:** In Mode 2, Nginx centralizes external HTTPS traffic on port 443 with path-based routing. The iframe uses the same HTTPS origin, eliminating mixed-content issues and secondary certificates.
+> **Note:** Nginx centralizes all external HTTPS traffic on port 443 with path-based routing for both standalone and OSD-integrated access. The iframe uses the same HTTPS origin as standalone access, eliminating mixed-content issues and secondary certificates.
 
 
 WPTV v2.1 is deployed as a native OpenSearch Dashboards UI Plugin, accessible directly from the Wazuh Dashboard sidebar under Forensics.
@@ -541,7 +544,7 @@ tail -f /var/log/wazuh-process-tree/wptv.log
 
 > **Important:** WPTV is designed for Windows process telemetry. The selected Wazuh agent must be connected and actively sending Windows Security and/or Sysmon events to Wazuh. Linux agents may appear in the Wazuh environment, but they do not provide the Windows process telemetry required to build WPTV process graphs.
 
-- Access via browser: `https://<YOUR_WAZUH_IP>/app/wptv` (OSD plugin integrated mode)
+- Access via browser: `https://<YOUR_WAZUH_IP>/app/wptv` (OSD plugin, embedded in the Wazuh Dashboard sidebar) or `https://<YOUR_WAZUH_IP>/wptv/` (standalone, outside the Dashboard shell). Both are served by the same Nginx `/wptv/` location block.
 - Enter **one** of: Agent ID, Host, or IP. Press **Enter** or click **ANALYZE**.
 - Select the **Time Range** - presets from 5 minutes to 30 days, or a custom range.
 - Optionally add a **PROCESS FILTER** by process name.
