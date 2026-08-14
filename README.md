@@ -2,7 +2,7 @@
 
 WPTV is an independent OpenSearch Dashboards UI Plugin that provides graph-based forensic investigation capabilities within the Wazuh Dashboard without modifying its core source code.
 
-WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry into interactive, draggable process graphs - enabling analysts to visualize process relationships and trace process lineages during Threat Hunting and Incident Response operations. Correlated with all 15 Sysmon detection EIDs and 22 critical Windows Audit Event IDs for hashes, network connections, loaded DLLs, dropped files, clipboard changes, registry modifications, pipe events, privilege escalation, persistence, and more.
+WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry into interactive, draggable process graphs - enabling analysts to visualize process relationships and trace process lineages during Threat Hunting and Incident Response operations. Correlated with all 15 Sysmon detection EIDs and 23 critical Windows Audit Event IDs for hashes, network connections, loaded DLLs, dropped files, clipboard changes, registry modifications, pipe events, privilege escalation, persistence, and more.
 
 > **Important:** WPTV is designed for Windows process telemetry. The selected Wazuh agent must be connected and actively sending Windows Security and/or Sysmon events to Wazuh. Linux agents may appear in the Wazuh environment, but they do not provide the Windows process telemetry required to build WPTV process graphs.
 
@@ -129,6 +129,7 @@ Beyond Sysmon, WPTV surfaces critical Windows Security and System Event IDs when
 | 4776 | NTLM credential validation | Pass-the-Hash / NTLM relay |
 | 4964 | Special groups assigned | Privileged group monitoring |
 | 7045 | New service installed | T1543 persistence |
+| 4689 | Process terminated | Process activity |
 
 ## Changelog
 
