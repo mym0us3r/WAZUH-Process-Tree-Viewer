@@ -489,7 +489,17 @@ After=network.target
 Type=simple
 User=wazuh-dashboard
 WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
+
+# Wazuh Indexer credentials (WPTV_INDEXER_*) - see wptv.env.example.
+# Mode 600, owned by wazuh-dashboard, never committed to git.
 EnvironmentFile=/etc/wazuh-process-tree/wptv.env
+
+StandardOutput=append:/var/log/wazuh-process-tree/wptv.log
+StandardError=append:/var/log/wazuh-process-tree/wptv.log
+
+# Production WSGI server (Gunicorn) with TLS.
+# The WPTV backend reuses the Wazuh Dashboard certificate for
+# the local HTTPS connection from Nginx to Gunicorn.
 ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn \
   --workers 4 \
   --bind 127.0.0.1:5000 \
@@ -497,6 +507,8 @@ ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn 
   --certfile /etc/wazuh-dashboard/certs/wazuh-dashboard.pem \
   --keyfile /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem \
   server:app
+
+# Delay before restart to avoid systemd start-limit-hit on rapid crash loops.
 Restart=always
 RestartSec=5
 
