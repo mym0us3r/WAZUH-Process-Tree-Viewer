@@ -1,6 +1,17 @@
 # Changelog
-2026-08-12
+
+2026-08-13
+
 ## v2.1
+
+### Compatibility & Deployment Validation
+
+- **Wazuh 4.14.4 / OpenSearch Dashboards 2.19.4**: WPTV v2.1 was originally developed, deployed, and validated against this Wazuh release combination.
+- **Wazuh 4.14.7 / OpenSearch Dashboards 2.19.5**: additional deployment validation was performed against Wazuh 4.14.7. This release uses a newer OpenSearch Dashboards version than the original WPTV v2.1 validation environment.
+- **OpenSearch Dashboards plugin compatibility**: updated the WPTV plugin manifest (`opensearch_dashboards.json`) from OpenSearch Dashboards `2.19.4` to `2.19.5` when deploying WPTV v2.1 on Wazuh 4.14.7. The OSD plugin version must match the installed OpenSearch Dashboards version.
+- **WPTV Indexer service permissions**: the `wptv_svc` service account requires `cluster:monitor/main` in addition to read access to `wazuh-alerts-*` and `wazuh-archives-*`. This permission allows the backend to perform the required cluster-level monitoring request against the Wazuh Indexer before executing data queries.
+- **Windows agent connectivity requirement**: validated that the selected Wazuh agent must be registered, connected, and actively sending Windows Security and/or Sysmon telemetry. WPTV is designed for Windows process telemetry and cannot construct the expected process graphs from Linux-only agent telemetry.
+- **Wazuh Agent communication**: validated Windows agent connectivity through the Wazuh Manager, including the required agent communication ports (`1514` for agent communication and `1515` for enrollment). Network/firewall access must permit the Windows endpoint to reach the Wazuh Manager when the endpoint is located outside the server's local network.
 
 ### Data Sources
 
