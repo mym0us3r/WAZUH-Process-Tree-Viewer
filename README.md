@@ -1,6 +1,6 @@
 # WAZUH Process Tree Viewer (WPTV)
 
-WPTV is an independent OpenSearch Dashboards UI Plugin and forensic backend that integrates with the Wazuh Dashboard without modifying its core source code.
+WPTV is an independent OpenSearch Dashboards UI Plugin that provides forensic investigation capabilities within the Wazuh Dashboard without modifying its core source code.
 
 WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry into interactive, draggable process trees - enabling analysts to trace process lineages during Threat Hunting and Incident Response operations. Correlated with all 15 Sysmon detection EIDs and 22 critical Windows Audit Event IDs for hashes, network connections, loaded DLLs, dropped files, clipboard changes, registry modifications, pipe events, privilege escalation, persistence, and more.
 
