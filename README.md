@@ -162,8 +162,11 @@ Copy the backend files:
 cp process_tree_api/server.py \
    process_tree_api/logic.py \
    process_tree_api/requirements.txt \
-   process_tree_api/wptv_example.env \
    /usr/share/wazuh-dashboard/plugins/process_tree_api/
+
+cp process_tree_api/wptv_example.env \
+   /usr/share/wazuh-dashboard/plugins/process_tree_api/wptv.env
+
 ```
 
 Copy the frontend files:
@@ -182,8 +185,7 @@ process_tree_api/
 ├── logic.py
 ├── server.py
 ├── requirements.txt
-├── wptv_example.env
-├── wptv.env              (generated from wptv_example.env - never commit this)
+├── wptv.env              (copied from wptv_example.env - never commit this)
 ├── public/
 │   ├── index.html
 │   ├── favicon.ico
