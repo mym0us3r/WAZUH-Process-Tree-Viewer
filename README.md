@@ -140,38 +140,38 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history.
 
 Clone the repository into the current directory:
 
-```bash
+```
 git clone https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer.git
 ```
 
 Enter the cloned repository:
 
-```bash
+```
 cd WAZUH-Process-Tree-Viewer
 ```
 
 Create the WPTV backend directory:
 
-```bash
+```
 mkdir -p /usr/share/wazuh-dashboard/plugins/process_tree_api/public
 ```
 
 Copy the backend files:
 
-```bash
+```
 cp process_tree_api/server.py \
    process_tree_api/logic.py \
    process_tree_api/requirements.txt \
    /usr/share/wazuh-dashboard/plugins/process_tree_api/
 
 cp process_tree_api/wptv_example.env \
-   /usr/share/wazuh-dashboard/plugins/process_tree_api/wptv.env
+   /etc/wazuh-process-tree/wptv.env
 
 ```
 
 Copy the frontend files:
 
-```bash
+```
 cp process_tree_api/public/index.html \
    process_tree_api/public/favicon.ico \
    process_tree_api/public/favicon.svg \
@@ -180,27 +180,27 @@ cp process_tree_api/public/index.html \
 
 After a complete deployment:
 
-```text
-process_tree_api/
+```
+/usr/share/wazuh-dashboard/plugins/process_tree_api/
 ├── logic.py
-├── server.py
+├── public
+│   ├── favicon.ico
+│   ├── favicon.svg
+│   └── index.html
 ├── requirements.txt
-├── wptv.env              (copied from wptv_example.env - never commit this)
-├── public/
-│   ├── index.html
-│   ├── favicon.ico
-│   └── favicon.svg
+├── server.py
 └── venv/
     └── bin/
         ├── gunicorn
         └── python3
+
 ```
 
 ### 2. Virtual Environment
 
 Isolate dependencies to prevent system conflicts:
 
-```bash
+```
 cd /usr/share/wazuh-dashboard/plugins/process_tree_api
 
 python3 -m venv venv
@@ -213,14 +213,14 @@ deactivate
 
 The service must be executed by the dashboard user:
 
-```bash
+```
 chown -R wazuh-dashboard:wazuh-dashboard /usr/share/wazuh-dashboard/plugins/process_tree_api
 chmod -R 755 /usr/share/wazuh-dashboard/plugins/process_tree_api
 ```
 
 ### 4. Log Directory
 
-```bash
+```
 mkdir -p /var/log/wazuh-process-tree
 chown wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
 ```
@@ -231,7 +231,7 @@ WPTV queries the Wazuh Indexer directly as its primary data source. Create a ded
 
 Create the role:
 
-```bash
+```
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -254,7 +254,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" 
 
 Create the user:
 
-```bash
+```
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/internalusers/wptv_svc" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -267,7 +267,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/internalusers/wpt
 
 Map the role to the user:
 
-```bash
+```
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/rolesmapping/wptv_role" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -278,7 +278,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/rolesmapping/wptv
 
 Then configure the credentials:
 
-```bash
+```
 mkdir -p /etc/wazuh-process-tree/certs
 
 cp /etc/wazuh-indexer/certs/root-ca.pem \
@@ -287,28 +287,35 @@ cp /etc/wazuh-indexer/certs/root-ca.pem \
 cp /usr/share/wazuh-dashboard/plugins/process_tree_api/wptv_example.env \
    /etc/wazuh-process-tree/wptv.env
 
+/etc/wazuh-process-tree/
+├── certs
+│   └── root-ca.pem
+└── wptv.env
+
 nano /etc/wazuh-process-tree/wptv.env
 
-chown wazuh-dashboard:wazuh-dashboard /etc/wazuh-process-tree/wptv.env
-chmod 600 /etc/wazuh-process-tree/wptv.env
 ```
 
-`wptv_example.env` template:
+`wptv.env (wptv_example.env)` template:
 
-```bash
+```
 WPTV_INDEXER_URL=https://127.0.0.1:9200
 WPTV_INDEXER_INDEX=wazuh-alerts-*
 WPTV_INDEXER_USER=wptv_svc
 WPTV_INDEXER_PASSWORD=<your_password>
 WPTV_INDEXER_CA_CERT=/etc/wazuh-process-tree/certs/root-ca.pem
 WPTV_ARCHIVE_INDEX=wazuh-archives-*
+
+chown wazuh-dashboard:wazuh-dashboard /etc/wazuh-process-tree/wptv.env
+chmod 600 /etc/wazuh-process-tree/wptv.env
+
 ```
 
 ### 6. Nginx Reverse Proxy (Unified Configuration)
 
 **Check whether Nginx is installed:**
 
-```bash
+```
 if ! command -v nginx >/dev/null 2>&1; then
     echo "Nginx is not installed. Installing..."
     apt update
@@ -320,7 +327,7 @@ fi
 
 Nginx terminates external HTTPS on port 443 and routes paths uniformly:
 
-```bash
+```
 cat > /etc/nginx/sites-available/wptv << 'EOF'
 server {
     listen 443 ssl;
@@ -357,14 +364,14 @@ systemctl reload nginx
 
 Configure the Wazuh Dashboard to bind strictly to loopback (`127.0.0.1:5601`) in `/etc/wazuh-dashboard/opensearch_dashboards.yml`:
 
-```yaml
+```
 server.port: 5601
 server.host: "127.0.0.1"
 ```
 
 Verify that the dashboard is listening:
 
-```bash
+```
 sudo ss -ltnp | grep ':5601'
 ```
 
@@ -372,8 +379,17 @@ sudo ss -ltnp | grep ':5601'
 
 Before installing the plugin, verify the installed Wazuh Dashboard package version:
 
-```bash
-apt-cache policy wazuh-dashboard
+```
+cat /usr/share/wazuh-dashboard/package.json | grep -i '"version"'
+
+Expected output:
+"version": "2.19.4",
+    "version": "4.14.4",
+
+Where:
+2.19.4 - OpenSearch Dashboards version
+4.14.4 - Wazuh version
+
 ```
 
 The installed package version identifies the Wazuh Dashboard release in use without directly executing Wazuh Dashboard binaries.
@@ -387,13 +403,13 @@ The corresponding OpenSearch Dashboards versions for the validated Wazuh release
 
 Verify the plugin manifest:
 
-```bash
+```
 cat wptv_plugin/opensearch_dashboards.json
 ```
 
 For Wazuh 4.14.4:
 
-```json
+```
 {
   "id": "wptv",
   "version": "2.1.0",
@@ -407,7 +423,7 @@ For Wazuh 4.14.4:
 
 For Wazuh 4.14.7:
 
-```json
+```
 {
   "id": "wptv",
   "version": "2.1.0",
@@ -423,7 +439,7 @@ For Wazuh 4.14.7:
 
 Install the plugin:
 
-```bash
+```
 sudo bash wptv_plugin/install.sh
 ```
 
@@ -435,13 +451,13 @@ After the dashboard restarts, the sidebar entry appears under:
 
 If the dashboard fails to start after plugin installation, inspect the service status:
 
-```bash
+```
 sudo systemctl status wazuh-dashboard --no-pager -l
 ```
 
 And the recent dashboard logs:
 
-```bash
+```
 sudo journalctl -u wazuh-dashboard -n 100 --no-pager
 ```
 
@@ -451,7 +467,7 @@ If the logs report an OpenSearch Dashboards compatibility error, verify that `op
 
 Every node's "Open in Wazuh Discover" link is built from a JavaScript constant, `WAZUH_DASHBOARD_BASE_URL`, in the **first lines** of the `<script>` block in `public/index.html`:
 
-```js
+```
 const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
 ```
 
@@ -459,11 +475,11 @@ const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
 
 Create the service file:
 
-```bash
+```
 sudo nano /etc/systemd/system/wazuh-process-tree.service
 ```
 
-```ini
+```
 [Unit]
 Description=Wazuh Process Tree Viewer (WPTV)
 After=network.target
@@ -475,7 +491,7 @@ WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
 EnvironmentFile=/etc/wazuh-process-tree/wptv.env
 ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn \
   --workers 4 \
-  --bind 0.0.0.0:5000 \
+  --bind 127.0.0.1:5000 \
   --timeout 120 \
   --certfile /etc/wazuh-dashboard/certs/wazuh-dashboard.pem \
   --keyfile /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem \
@@ -489,7 +505,7 @@ WantedBy=multi-user.target
 
 ### Service Logging
 
-```bash
+```
 sudo mkdir -p /var/log/wazuh-process-tree
 sudo touch /var/log/wazuh-process-tree/wptv.log
 sudo chown -R wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
@@ -499,7 +515,7 @@ sudo chmod 640 /var/log/wazuh-process-tree/wptv.log
 
 ### Management Commands
 
-```bash
+```
 sudo systemctl daemon-reload
 sudo systemctl start wazuh-process-tree
 sudo systemctl stop wazuh-process-tree
