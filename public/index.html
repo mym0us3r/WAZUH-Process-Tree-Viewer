@@ -1,0 +1,2694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WAZUH Process Tree Viewer - Threat Hunting & Incident Response</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #1a202c; color: #e2e8f0; overflow: hidden; }
+.navbar { background: #111827; color: #00a0d1; padding: 15px 25px; border-bottom: 2px solid #00a0d1; }
+.toolbar { background: #1f2937; padding: 12px 25px; display: flex; gap: 15px; border-bottom: 1px solid #374151; align-items: center; flex-wrap: wrap; }
+button { background: #00a0d1; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+button:disabled { background: #374151; cursor: not-allowed; }
+input, select { background: #374151; border: 1px solid #4b5563; color: white; padding: 8px; border-radius: 4px; }
+.stats { background: #111827; padding: 5px 25px; font-size: 12px; color: #9ca3af; font-weight: bold; }
+.stats span { color: #00a0d1; }
+div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !important; border: 1px solid #00a0d1 !important; padding: 10px !important; border-radius: 5px; font-family: 'Courier New', monospace; }
+
+#customRangeWrapper { display: none; gap: 8px; align-items: center; }
+
+.mainArea { display: flex; height: calc(100vh - 160px); }
+#mynetwork { flex: 1 1 auto; min-width: 0; background: #1a202c; cursor: grab; }
+
+/* Drag handle between graph and detail panel */
+#panelDivider {
+    flex: 0 0 5px;
+    background: #374151;
+    cursor: col-resize;
+    transition: background 0.15s;
+    position: relative;
+    z-index: 10;
+}
+#panelDivider:hover, #panelDivider.dragging { background: #00a0d1; }
+
+#detailPanel {
+    flex: 0 0 360px;
+    min-width: 220px;
+    max-width: 800px;
+    background: #111827;
+    border-left: none;
+    padding: 16px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+#detailPanel h3 { margin: 0 0 10px 0; color: #00a0d1; font-size: 14px; word-break: break-all; }
+#detailPanel pre {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+    background: #1a202c;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #374151;
+    margin: 0;
+}
+#detailPanel .notObserved { color: #f6ad55; font-size: 12px; margin-top: 8px; }
+#detailPanel .placeholder { color: #6b7280; font-size: 12px; }
+
+.tabBar { display: flex; border-bottom: 1px solid #374151; margin-bottom: 12px; flex-wrap: wrap; }
+.tabBtn {
+    background: none; border: none; color: #9ca3af; font-size: 12px; font-weight: 600;
+    padding: 8px 10px; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.tabBtn:hover { color: #e2e8f0; }
+.tabBtn.active { color: #00a0d1; border-bottom: 2px solid #00a0d1; }
+.tabPane { }
+.commentEntry {
+    background: #1a202c; border: 1px solid #374151; border-radius: 4px;
+    padding: 8px 10px; margin-bottom: 8px; font-size: 12px;
+}
+.commentEntry .commentMeta { color: #6b7280; font-size: 11px; margin-bottom: 4px; }
+.commentEntry .commentText { color: #e2e8f0; white-space: pre-wrap; word-break: break-word; }
+#commentInput {
+    width: 100%; box-sizing: border-box; background: #1a202c; color: #e2e8f0;
+    border: 1px solid #374151; border-radius: 4px; padding: 8px; font-size: 12px;
+    font-family: inherit; resize: vertical; min-height: 60px; margin-top: 10px;
+}
+#commentSubmitBtn {
+    background: #00a0d1; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px;
+}
+/* ── Badge pills (Elastic-style, below process title) ────────────────────── */
+.badge-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+    cursor: default;
+}
+.badge-alert   { background: rgba(239,68,68,0.2);  color: #ef4444; border: 1px solid rgba(239,68,68,0.4); }
+.badge-conn    { background: rgba(125,211,252,0.15); color: #7dd3fc; border: 1px solid rgba(125,211,252,0.3); }
+.badge-file    { background: rgba(134,239,172,0.15); color: #86efac; border: 1px solid rgba(134,239,172,0.3); }
+.badge-lib     { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+
+/* ── Structured field table (Basic Properties) ───────────────────────────── */
+.field-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.field-table td { padding: 5px 8px; vertical-align: top; border-bottom: 1px solid #1f2937; }
+.field-table .field-name  { color: #6b7280; font-weight: 600; white-space: nowrap; width: 38%; }
+.field-table .field-value { color: #e2e8f0; word-break: break-all; font-family: 'Courier New', monospace; }
+.field-table .field-value.highlight { color: #f6ad55; }
+.field-section { color: #00a0d1; font-size: 11px; font-weight: 700; padding: 8px 0 4px 0;
+                 text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #374151; }
+
+/* ── Alert timeline (Alerts tab) ─────────────────────────────────────────── */
+.alert-entry {
+    border-left: 3px solid #374151; padding: 8px 10px; margin-bottom: 8px;
+    background: #1a202c; border-radius: 0 4px 4px 0;
+}
+.alert-entry.level-high   { border-left-color: #ef4444; }
+.alert-entry.level-medium { border-left-color: #f59e0b; }
+.alert-entry.level-low    { border-left-color: #6b7280; }
+.alert-entry.level-critical { border-left-color: #7c3aed; }
+.alert-event-type { font-size: 10px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: 0.08em; color: #9ca3af; margin-bottom: 3px; }
+.alert-event-type.start  { color: #22c55e; }
+.alert-event-type.end    { color: #ef4444; }
+.alert-event-type.other  { color: #6b7280; }
+.alert-rule-desc { color: #e2e8f0; font-size: 12px; font-weight: 600; }
+.alert-meta { font-size: 11px; color: #6b7280; margin-top: 3px; }
+.alert-mitre { font-size: 10px; color: #a78bfa; margin-top: 2px; }
+.alert-level-badge {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px;
+    border-radius: 4px; margin-left: 6px; vertical-align: middle;
+}
+.level-bg-critical { background: #7c3aed; color: #fff; }
+.level-bg-high     { background: #ef4444; color: #fff; }
+.level-bg-medium   { background: #f59e0b; color: #000; }
+.level-bg-low      { background: #374151; color: #9ca3af; }
+</style>
+</head>
+<body>
+<div class="navbar">
+<div style="display:flex; align-items:center; gap:10px;">
+<svg width="28" height="28" viewBox="0 0 32 32" style="flex-shrink:0;" aria-hidden="true">
+<rect width="32" height="32" rx="6" fill="#111827"/>
+<circle cx="13" cy="13" r="8" fill="none" stroke="#00a0d1" stroke-width="2.2"/>
+<line x1="18.8" y1="18.8" x2="26" y2="26" stroke="#00a0d1" stroke-width="2.6" stroke-linecap="round"/>
+<circle cx="9.5" cy="10.5" r="1.5" fill="#00a0d1"/>
+<circle cx="16" cy="9" r="1.5" fill="#00a0d1"/>
+<circle cx="13" cy="16.5" r="1.7" fill="#00a0d1"/>
+<line x1="9.5" y1="10.5" x2="13" y2="16.5" stroke="#00a0d1" stroke-width="1.2"/>
+<line x1="16" y1="9" x2="13" y2="16.5" stroke="#00a0d1" stroke-width="1.2"/>
+</svg>
+<h2 style="margin:0; letter-spacing: 2px;">WAZUH Process Tree Viewer - Threat Hunting & Incident Response</h2>
+</div>
+<a href="https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer" target="_blank" rel="noopener" style="color:#00a0d1; font-size:12px; text-decoration:none;">GitHub: https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer</a>
+<span id="discoverBaseUrlLabel" style="color:#6b7280; font-size:11px; margin-left:16px;"></span>
+</div>
+<div class="toolbar">
+<div>AGENT ID: <input type="text" id="agentInput" placeholder="e.g. 009" style="width: 50px;"></div>
+<div>HOST: <input type="text" id="hostInput" placeholder="e.g. LABDESK" style="width: 110px;"></div>
+<div>IP: <input type="text" id="ipInput" placeholder="e.g. 192.168.1.10" style="width: 120px;"></div>
+<div>TIME RANGE:
+<select id="timeRange" onchange="toggleCustomRange()">
+<option value="0.083">Last 5 Minutes</option>
+<option value="0.167">Last 10 Minutes</option>
+<option value="0.5">Last 30 Minutes</option>
+<option value="1">Last 1 Hour</option>
+<option value="2">Last 2 Hours</option>
+<option value="3">Last 3 Hours</option>
+<option value="4">Last 4 Hours</option>
+<option value="5">Last 5 Hours</option>
+<option value="6">Last 6 Hours</option>
+<option value="24" selected>Last 24 Hours</option>
+<option value="168">Last 7 Days</option>
+<option value="720">Last 30 Days</option>
+<option value="custom">Custom Range...</option>
+</select>
+</div>
+<div id="customRangeWrapper">
+FROM: <input type="datetime-local" id="startInput">
+TO: <input type="datetime-local" id="endInput">
+</div>
+<div>PROCESS FILTER: <input type="text" id="filterInput" placeholder="e.g. notepad.exe"></div>
+<div>EventID: <input type="text" id="eventIdInput" placeholder="e.g. 17" style="width:70px;" title="Filter by Windows/Sysmon Event ID (e.g. 17, 24, 4104)"></div>
+<button id="loadBtn" onclick="loadTree()">ANALYZE</button>
+<button id="showAllBtn" onclick="showAllTrees()" style="display:none;background:#d97706;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">← SHOW ALL</button>
+<button onclick="exportAsPdf()" style="background:#374151;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">EXPORT PDF</button>
+</div>
+<div class="stats">
+PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</span> | UPDATED: <span id="statTime">--:--:--</span>
+<span id="statusMsg" style="color:#6b7280;margin-left:8px;"></span>
+</div>
+<div id="reportGraphContainer" style="position:absolute; left:-9999px; top:0; width:1400px; height:900px; background:#1a202c;"></div>
+<div class="mainArea">
+<div id="mynetwork"></div>
+<div id="panelDivider" title="Drag to resize"></div>
+<div id="detailPanel">
+<div style="font-size:10px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.1em;padding:4px 0 6px;border-bottom:1px solid #1f2937;margin-bottom:6px;">WPTV  -  Process Details</div>
+<h3 id="detailTitle" style="font-size:14px;margin:0 0 8px;color:#7dd3fc;"></h3>
+<div id="detailPlaceholder" class="placeholder">Click a node in the graph to see its full details here - command line, user, host, IP, rule - plus a direct link to Discover. The text is selectable so you can copy it.</div>
+
+<div id="detailTabs" style="display:none;">
+
+<!-- Badge pills: alert/file/library/connection counts - Elastic style -->
+<div id="badgePills" style="display:none; margin-bottom:10px; flex-wrap:wrap; gap:6px;"></div>
+
+<div class="tabBar">
+<button class="tabBtn active" id="tabBtn-basic" onclick="showDetailTab('basic')">Basic Properties</button>
+<button class="tabBtn" id="tabBtn-alerts" onclick="showDetailTab('alerts')">Alerts <span id="alertBadge" style="background:#ef4444;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:3px;display:none;">0</span></button>
+<button class="tabBtn" id="tabBtn-detections" onclick="showDetailTab('detections')">Detections</button>
+</div>
+
+<div id="tabPane-basic" class="tabPane">
+<!-- Structured field table (Elastic-style) -->
+<div id="detailFieldTable" style="display:none;"></div>
+<pre id="detailBody" style="display:none;"></pre>
+<div id="detailWarning" class="notObserved" style="display:none;"></div>
+<a id="discoverLink" href="#" target="_blank" rel="noopener" style="display:none; color:#00a0d1; font-size:12px; margin-top:10px;">Open in Wazuh Discover &#8594;</a>
+</div>
+
+<!-- Alert Timeline tab - like Elastic's alert list per process -->
+<div id="tabPane-alerts" class="tabPane" style="display:none;">
+<div id="alertTimeline"></div>
+<div id="alertsEmpty" class="placeholder">No Wazuh detection rules fired for this process in the queried window.</div>
+</div>
+
+</div>
+
+<div id="tabPane-detections" class="tabPane" style="display:none;">
+<pre id="detailSysmonProcess" style="display:none; color:#93c5fd;"></pre>
+<pre id="detailImageLoads" style="display:none; margin-top:10px; color:#a78bfa;"></pre>
+<pre id="detailFileCreates" style="display:none; margin-top:10px; color:#86efac;"></pre>
+<div id="detailSysmonRules" style="display:none; margin-top:10px;"></div>
+<div id="detectionsEmpty" class="placeholder">Sysmon Telemetry (EID 1 to 29): Correlated for this process in the queried window are shown under the Relations tab.</div>
+</div>
+
+<div id="commentsEmpty" class="placeholder" style="display:none;">No comments yet - be the first to leave a note for the next analyst.</div>
+<textarea id="commentInput" placeholder="Add a note about this process for the next analyst..."></textarea>
+<div><button id="commentSubmitBtn" onclick="submitComment()">Add Comment</button></div>
+</div>
+</div>
+</div>
+
+<script>
+// ============================================================================
+// CONFIGURATION - the one thing you may need to edit after cloning this repo
+// ============================================================================
+// WAZUH_DASHBOARD_BASE_URL: base URL of your Wazuh Dashboards instance, used
+// to build every "Open in Discover" link. Auto-detected from the page's own
+// hostname - WPTV is normally served on the same host as the Dashboard
+// (just a different port, e.g. :5000 vs :443), so this works out of the box
+// for the standard deployment. The navbar shows the detected value live -
+// if it doesn't match your actual Dashboard address, replace the line below
+// with a hardcoded value instead, e.g.:
+//   const WAZUH_DASHBOARD_BASE_URL = 'https://your-dashboard-host';
+// See README.md section "4. Discover Link Base URL" for the full walkthrough.
+const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
+
+// WAZUH_DISCOVER_DATA_VIEW_ID: the index pattern string Discover's
+// data-explorer app expects (confirmed from an actual Discover share link
+// on this deployment - it takes the pattern itself, e.g. 'wazuh-alerts-*',
+// not an opaque saved-object id). Change this only if your Wazuh indices
+// use a different pattern than the default.
+const WAZUH_DISCOVER_DATA_VIEW_ID = 'wazuh-alerts-*';
+// ============================================================================
+
+// ============================================================================
+// RUNTIME STATE - all mutable globals declared here, before any code runs,
+// so a throw in the resize IIFE below never leaves them uninitialized
+// ============================================================================
+let network         = null;   // vis-network instance
+let nodesDataset    = null;
+let edgesDataset    = null;
+let activeLineageRoot    = null;
+let activeLineageIds     = [];
+let lineageOriginalColors = {};
+let currentDetailNodeId  = null;
+let currentDetailMeta    = null;
+
+// Double-click lineage marking now uses blue - yellow is reserved for the
+// Parent Process (root) role itself, see recolorRootsAndBranches().
+const LINEAGE_COLOR    = { background: '#3b82f6', border: '#1d4ed8' };
+const ROOT_COLOR       = { background: '#f5c518', border: '#8a6d0b' };
+const BRANCH_COLOR     = { background: '#6b7280', border: '#3f434a' };
+const ENRICHED_BORDER  = '#c9a227';
+
+// ── Panel resize drag (divider between graph and detail panel) ──────────────
+// Wrapped in try/catch so a missing element (e.g. old cached HTML without
+// the #panelDivider div) never breaks the rest of the application.
+try {
+    (function initPanelResize() {
+        const divider = document.getElementById('panelDivider');
+        const panel   = document.getElementById('detailPanel');
+        if (!divider || !panel) return;
+        let dragging = false, startX = 0, startW = 0;
+
+        divider.addEventListener('mousedown', (e) => {
+            dragging = true;
+            startX   = e.clientX;
+            startW   = panel.getBoundingClientRect().width;
+            divider.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const delta = startX - e.clientX;
+            panel.style.flexBasis = `${Math.min(800, Math.max(220, startW + delta))}px`;
+        });
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            divider.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    })();
+} catch (e) {
+    console.warn('Panel resize init failed (non-critical):', e);
+}
+
+function hasEnrichment(meta) {
+    if (!meta) return false;
+    return !!(meta.sysmonProcess ||
+        (meta.connections && meta.connections.length) ||
+        (meta.imageLoads && meta.imageLoads.length) ||
+        (meta.fileCreates && meta.fileCreates.length));
+}
+
+// ── Badge pills (Elastic-style counts above the tab bar) ─────────────────
+function renderBadgePills(meta) {
+    const container = document.getElementById('badgePills');
+    if (!meta) { container.style.display = 'none'; return; }
+    const b = meta.badgeCounts || {};
+    const pills = [];
+
+    if (b.alerts > 0) pills.push(
+        `<span class="badge-pill badge-alert">⚑ ${b.alerts} alert${b.alerts !== 1 ? 's' : ''}</span>`);
+    if (b.connections > 0) pills.push(
+        `<span class="badge-pill badge-conn">⇌ ${b.connections} connection${b.connections !== 1 ? 's' : ''}</span>`);
+    if (b.files > 0) pills.push(
+        `<span class="badge-pill badge-file">⊞ ${b.files} file${b.files !== 1 ? 's' : ''}</span>`);
+    if (b.libraries > 0) pills.push(
+        `<span class="badge-pill badge-lib">⊘ ${b.libraries} librar${b.libraries !== 1 ? 'ies' : 'y'}</span>`);
+
+    if (pills.length) {
+        container.innerHTML = pills.join('');
+        container.style.display = 'flex';
+    } else {
+        container.style.display = 'none';
+    }
+}
+
+// ── Structured field table (Basic Properties - Elastic-style) ────────────
+function renderFieldTable(meta) {
+    const table = document.getElementById('detailFieldTable');
+    if (!meta || !meta.observed) { table.style.display = 'none'; return; }
+
+    const rows = [];
+    const row = (name, val, highlight) => {
+        const cls = highlight ? ' highlight' : '';
+        return `<tr><td class="field-name">${name}</td><td class="field-value${cls}">${val || 'N/A'}</td></tr>`;
+    };
+    const section = (label) => `<tr><td colspan="2" class="field-section">${label}</td></tr>`;
+
+    rows.push(section('Process'));
+    rows.push(row('@timestamp', meta.time));
+    rows.push(row('process.executable', meta.fullPath));
+    rows.push(row('process.name', meta.name));
+    rows.push(row('process.pid', meta.pid));
+    rows.push(row('process.parent.pid', meta.ppid));
+
+    if (meta.cmd && meta.cmd !== 'N/A') {
+        // Split commandline into executable + args, like Elastic does
+        rows.push(row('process.command_line', meta.cmd));
+    }
+
+    if (meta.sysmonProcess) {
+        rows.push(section('Sysmon EID 1'));
+        const sp = meta.sysmonProcess;
+        if (sp.hashes && sp.hashes !== 'N/A') {
+            sp.hashes.split(',').forEach(h => {
+                const parts = h.trim().split('=');
+                if (parts.length === 2)
+                    rows.push(row(`process.hash.${parts[0].toLowerCase()}`, parts[1], true));
+            });
+        }
+        if (sp.integrityLevel && sp.integrityLevel !== 'N/A')
+            rows.push(row('process.integrity_level', sp.integrityLevel));
+        if (sp.company && sp.company !== 'N/A')
+            rows.push(row('process.code_signature.subject_name', sp.company));
+    }
+
+    rows.push(section('Identity'));
+    rows.push(row('user.name', meta.user));
+    if (meta.targetUser && meta.targetUser !== 'N/A' && meta.targetUser !== meta.user)
+        rows.push(row('user.target.name', meta.targetUser));
+
+    rows.push(section('Host'));
+    rows.push(row('host.hostname', meta.host));
+    rows.push(row('agent.ip', meta.ip));
+
+    rows.push(section('Wazuh'));
+    rows.push(row('rule.id', meta.ruleId));
+    if (meta.ruleLevel) {
+        const levelColor = meta.ruleLevel >= 12 ? '#ef4444' : meta.ruleLevel >= 8 ? '#f59e0b' : '#6b7280';
+        rows.push(`<tr><td class="field-name">rule.level</td><td class="field-value">
+            <span style="color:${levelColor};font-weight:700;">${meta.ruleLevel}</span></td></tr>`);
+    }
+    rows.push(row('data.win.system.eventID', meta.eventId));
+
+    table.innerHTML = `<table class="field-table">${rows.join('')}</table>`;
+    table.style.display = 'block';
+}
+
+// ── Alert timeline (Alerts tab - Elastic-style) ──────────────────────────
+function renderAlertTimeline(meta) {
+    const container = document.getElementById('alertTimeline');
+    const empty = document.getElementById('alertsEmpty');
+    const badge = document.getElementById('alertBadge');
+    const tabBtn = document.getElementById('tabBtn-alerts');
+
+    const detections = (meta && meta.detections) || [];
+    if (!detections.length) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        empty.style.display = 'block';
+        badge.style.display = 'none';
+        tabBtn.style.color = '';
+        return;
+    }
+
+    // Update tab badge counter
+    badge.textContent = detections.length;
+    badge.style.display = 'inline';
+    tabBtn.style.color = '#ef4444';
+
+    const maxLevel = Math.max(...detections.map(d => d.ruleLevel || 0));
+    const levelClass = maxLevel >= 12 ? 'level-critical' : maxLevel >= 8 ? 'level-high' : maxLevel >= 5 ? 'level-medium' : 'level-low';
+    const levelBgClass = maxLevel >= 12 ? 'level-bg-critical' : maxLevel >= 8 ? 'level-bg-high' : maxLevel >= 5 ? 'level-bg-medium' : 'level-bg-low';
+
+    const entries = detections.map(d => {
+        // Classify event type from description keywords (like Elastic uses process.event)
+        const desc = (d.ruleDesc || '').toLowerCase();
+        let evType = 'detection', evTypeClass = 'other', evTypeLabel = 'ALERT';
+        if (desc.includes('created') || desc.includes('start') || desc.includes('spawn') || d.eventId === '1' || d.eventId === '4688') {
+            evTypeLabel = 'PROCESS START'; evTypeClass = 'start';
+        } else if (desc.includes('terminat') || desc.includes('end') || desc.includes('exit')) {
+            evTypeLabel = 'PROCESS END'; evTypeClass = 'end';
+        } else if (desc.includes('network') || desc.includes('connection') || d.eventId === '3') {
+            evTypeLabel = 'NETWORK'; evTypeClass = 'other';
+        } else if (desc.includes('file') || d.eventId === '11') {
+            evTypeLabel = 'FILE'; evTypeClass = 'other';
+        }
+
+        const ts = d.time ? d.time.replace('T', ' @ ').replace('+0000', '').replace('.000', '') : '';
+        const levelBg = d.ruleLevel >= 12 ? 'level-bg-critical' : d.ruleLevel >= 8 ? 'level-bg-high' : d.ruleLevel >= 5 ? 'level-bg-medium' : 'level-bg-low';
+        const entryClass = d.ruleLevel >= 12 ? 'level-critical' : d.ruleLevel >= 8 ? 'level-high' : d.ruleLevel >= 5 ? 'level-medium' : 'level-low';
+
+        const mitreParts = [];
+        if (d.mitre) {
+            const ids = d.mitre.id ? (Array.isArray(d.mitre.id) ? d.mitre.id : [d.mitre.id]) : [];
+            const tactics = d.mitre.tactic ? (Array.isArray(d.mitre.tactic) ? d.mitre.tactic : [d.mitre.tactic]) : [];
+            if (tactics.length) mitreParts.push(tactics.join(', '));
+            if (ids.length) mitreParts.push(ids.join(' · '));
+        }
+        const mitreHtml = mitreParts.length
+            ? `<div class="alert-mitre">⬡ MITRE: ${mitreParts.join('  -  ')}</div>` : '';
+
+        return `<div class="alert-entry ${entryClass}">
+            <div class="alert-event-type ${evTypeClass}">${evTypeLabel}
+                <span class="alert-level-badge ${levelBg}">Level ${d.ruleLevel}</span>
+            </div>
+            <div class="alert-rule-desc">${d.ruleDesc || 'N/A'}</div>
+            <div class="alert-meta">Rule ${d.ruleId}${ts ? ' &nbsp;·&nbsp; ' + ts : ''}</div>
+            ${mitreHtml}
+        </div>`;
+    });
+
+    container.innerHTML = entries.join('');
+    container.style.display = 'block';
+    empty.style.display = 'none';
+}
+
+function recolorRootsAndBranches() {
+    if (!nodesDataset || !edgesDataset) return;
+    const hasIncoming = new Set();
+    edgesDataset.forEach((e) => hasIncoming.add(e.to));
+    const updates = [];
+    nodesDataset.forEach((n) => {
+        if (n.meta && n.meta.isNetworkNode) return;
+        if (n.meta && n.meta.isMoreNode) return; // MORE node keeps its own red
+        const isRoot = !hasIncoming.has(n.id);
+        if (isRoot) {
+            // Parent Process: ALWAYS red, regardless of any action
+            updates.push({ id: n.id, color: { background: '#b91c1c', border: '#7f1d1d' } });
+        } else {
+            // Children/grandchildren: gray when not selected
+            updates.push({ id: n.id, color: { background: '#4b5563', border: '#374151' } });
+        }
+    });
+    if (updates.length) nodesDataset.update(updates);
+}
+
+// Shown directly in the navbar so a misdetected/misconfigured base URL is
+// obvious at a glance, instead of only surfacing as a broken Discover link
+// after a click. If this doesn't match your actual Dashboard address,
+// override the constant above (see the comment on it).
+document.addEventListener('DOMContentLoaded', () => {
+    const label = document.getElementById('discoverBaseUrlLabel');
+    if (label) label.innerText = `Discover base URL: ${WAZUH_DASHBOARD_BASE_URL}`;
+});
+
+function toggleCustomRange() {
+    const rangeSelect = document.getElementById('timeRange').value;
+    const wrapper = document.getElementById('customRangeWrapper');
+
+    if (rangeSelect !== 'custom') {
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    wrapper.style.display = 'flex';
+
+    const startInput = document.getElementById('startInput');
+    const endInput = document.getElementById('endInput');
+
+    // default: last 24h, bounded to the last 30 days (the retention window our
+    // backend can actually cover on the manager's rotated log files)
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    if (!endInput.value) endInput.value = toDatetimeLocalValue(now);
+    if (!startInput.value) startInput.value = toDatetimeLocalValue(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+
+    const minAttr = toDatetimeLocalValue(thirtyDaysAgo);
+    const maxAttr = toDatetimeLocalValue(now);
+    startInput.min = minAttr;
+    startInput.max = maxAttr;
+    endInput.min = minAttr;
+    endInput.max = maxAttr;
+}
+
+function toDatetimeLocalValue(dateObj) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+}
+
+function buildRangeParams() {
+    const rangeSelect = document.getElementById('timeRange').value;
+
+    if (rangeSelect === 'custom') {
+        const startLocal = document.getElementById('startInput').value;
+        const endLocal = document.getElementById('endInput').value;
+        if (!startLocal || !endLocal) return 'range=24';
+
+        // datetime-local has no timezone info and represents the browser's local
+        // wall-clock time; new Date(...) parses it as local time, and toISOString()
+        // converts it to UTC - matching how event timestamps are stored (...Z)
+        const startUtc = new Date(startLocal).toISOString();
+        const endUtc = new Date(endLocal).toISOString();
+        return `start=${encodeURIComponent(startUtc)}&end=${encodeURIComponent(endUtc)}`;
+    }
+
+    return `range=${encodeURIComponent(rangeSelect)}`;
+}
+
+function getActiveTimeWindowIso() {
+    // same window used to query the backend, reused to build the Discover link
+    // so it opens on the same range the analyst was already looking at
+    const rangeSelect = document.getElementById('timeRange').value;
+
+    if (rangeSelect === 'custom') {
+        const startLocal = document.getElementById('startInput').value;
+        const endLocal = document.getElementById('endInput').value;
+        if (startLocal && endLocal) {
+            return { fromIso: new Date(startLocal).toISOString(), toIso: new Date(endLocal).toISOString() };
+        }
+    }
+
+    const hours = parseFloat(rangeSelect) || 24;
+    const now = new Date();
+    const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    return { fromIso: from.toISOString(), toIso: now.toISOString() };
+}
+
+function buildIdentityParams() {
+    const agentId = document.getElementById('agentInput').value.trim();
+    const host = document.getElementById('hostInput').value.trim();
+    const ip = document.getElementById('ipInput').value.trim();
+
+    const parts = [];
+    if (agentId) parts.push(`agent_id=${encodeURIComponent(agentId)}`);
+    if (host) parts.push(`host=${encodeURIComponent(host)}`);
+    if (ip) parts.push(`ip=${encodeURIComponent(ip)}`);
+    return parts.join('&');
+}
+
+function buildDiscoverLink(meta) {
+    if (!WAZUH_DASHBOARD_BASE_URL || !WAZUH_DISCOVER_DATA_VIEW_ID) return null;
+    if (!meta) return null;
+
+    const luceneParts = [];
+    let fromIso, toIso;
+
+    let discoverIndex = WAZUH_DISCOVER_DATA_VIEW_ID;
+    if (meta.observed) {
+        // observed node (child or a parent that had its own event): search the
+        // exact event via rule/event id, in the same window already queried
+        const activeWindow = getActiveTimeWindowIso();
+        fromIso = activeWindow.fromIso;
+        toIso = activeWindow.toIso;
+
+        // data.win.system.computer (the hostname inside the Windows event
+        // itself), not agent.name - agent.name is Wazuh's cached registration
+        // name and goes stale if the endpoint gets renamed or the agent gets
+        // reinstalled, which is exactly what happened on this deployment
+        if (meta.sysmon_only) {
+            // Ghost node: process born before the queried window.
+            // data.win.system.processID (decimal) is the field that
+            // EID 4104 and other Windows Audit events populate.
+            // Index: wazuh-archives-* where ghost-node detections originate.
+            if (meta.host && meta.host !== 'N/A')
+                luceneParts.push(`data.win.system.computer:"${meta.host}"`);
+            if (meta.pid) {
+                const decPid = parseInt(meta.pid, 16);
+                if (!isNaN(decPid))
+                    luceneParts.push(`data.win.system.processID:"${decPid}"`);
+            }
+            discoverIndex = 'wazuh-archives-*';
+        } else {
+            // Observed child node: host + process path (newProcessName).
+            if (meta.host && meta.host !== 'N/A') luceneParts.push(`data.win.system.computer:"${meta.host}"`);
+            if (meta.fullPath && meta.fullPath !== 'N/A') {
+                luceneParts.push(`data.win.eventdata.newProcessName:"${meta.fullPath.replace(/\\/g, '\\\\')}"`);
+            } else if (meta.name) {
+                luceneParts.push(`data.win.eventdata.newProcessName:*${meta.name}*`);
+            }
+        }
+    } else {
+        // synthetic "Parent Process" node: by definition it has no event inside
+        // the queried window (that is why it has no rule/event id at all), so
+        // there is nothing to search for there - instead, search a much wider
+        // window (90 days) using whichever identity field was used for this
+        // query plus the process path, since the goal here is finding when that
+        // parent process actually ran
+        const now = new Date();
+        const wideStart = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        fromIso = wideStart.toISOString();
+        toIso = now.toISOString();
+
+        const agentId = document.getElementById('agentInput').value.trim();
+        const host = document.getElementById('hostInput').value.trim();
+        const ip = document.getElementById('ipInput').value.trim();
+        if (agentId) luceneParts.push(`agent.id:"${agentId}"`);
+        if (host) luceneParts.push(`data.win.system.computer:"${host}"`);
+        if (ip) luceneParts.push(`agent.ip:"${ip}"`);
+        if (meta.fullPath && meta.fullPath !== 'N/A') {
+            // Lucene uses backslash as its own escape character, so a literal
+            // backslash in a Windows path (C:\Windows\...) must be doubled
+            luceneParts.push(`data.win.eventdata.newProcessName:"${meta.fullPath.replace(/\\/g, '\\\\')}"`);
+        }
+    }
+
+    if (!luceneParts.length) return null;
+    // Lucene requires the boolean operator in uppercase - lowercase "and" is
+    // parsed as a literal search term, not a boolean join. Confirmed working
+    // against this deployment's Discover (kuery returned zero hits here).
+    const luceneQuery = luceneParts.join(' AND ');
+
+    // Matches the exact URL shape of a Discover share link copied from this
+    // Wazuh Dashboards deployment (the newer data-explorer app, not the
+    // classic /app/discover): _a holds the view metadata and index pattern,
+    // _q holds the actual search query, _g holds the global time range. None
+    // of this is percent-encoded, same as the link the Dashboards UI itself
+    // produces - if a future Dashboards version changes this shape, copy a
+    // fresh "Share" link from Discover and diff it against this template.
+    const a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${discoverIndex}',view:discover))`;
+    const q = `(filters:!(),query:(language:lucene,query:'${luceneQuery}'))`;
+    const g = `(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${fromIso}',to:'${toIso}'))`;
+
+    return `${WAZUH_DASHBOARD_BASE_URL}/app/data-explorer/discover#?_a=${a}&_q=${q}&_g=${g}`;
+}
+
+function getDescendants(nodeId) {
+    const result = [];
+    const seen = new Set([nodeId]);
+    const queue = [nodeId];
+    while (queue.length) {
+        const current = queue.shift();
+        const outgoing = edgesDataset.get({ filter: (e) => e.from === current });
+        outgoing.forEach((e) => {
+            if (!seen.has(e.to)) {
+                seen.add(e.to);
+                result.push(e.to);
+                queue.push(e.to);
+            }
+        });
+    }
+    return result;
+}
+
+
+// ── computeLRTreeLayout: O(N) with memoization (not O(N²)) ─────────────────
+// Positions multiple trees in a grid (3 columns). subtreeH uses memoisation to
+// avoid recomputing heights for graphs with 2000+ nodes (which froze the browser).
+function computeLRTreeLayout(nodes, edges) {
+    const H=260,V=80,COLS=3,CG=1600,RG=600;
+    const ch={},hp=new Set();
+    nodes.forEach(n=>{if(!n.meta?.isNetworkNode&&!n.meta?.isMoreNode) ch[n.id]=[];});
+    edges.forEach(e=>{if(ch[e.from]!==undefined&&ch[e.to]!==undefined){ch[e.from].push(e.to);hp.add(e.to);}});
+    const roots=nodes.filter(n=>!hp.has(n.id)&&!n.meta?.isNetworkNode&&!n.meta?.isMoreNode);
+    const pos={},hc={};
+    function sH(id){
+        if(hc[id]!==undefined) return hc[id];
+        const c2=(ch[id]||[]).filter(x=>ch[x]!==undefined);
+        if(!c2.length){hc[id]=V;return V;}
+        let h=0;c2.forEach(x=>{h+=sH(x);});hc[id]=h;return h;
+    }
+    function pl(id,d,sy,ox,oy){
+        const c2=(ch[id]||[]).filter(x=>ch[x]!==undefined);
+        if(!c2.length){pos[id]={x:ox+d*H,y:oy+sy};return sy+V;}
+        let y=sy;const ms=[];
+        c2.forEach(x=>{const h=sH(x);pl(x,d+1,y,ox,oy);ms.push(y+h/2);y+=h;});
+        pos[id]={x:ox+d*H,y:oy+(ms[0]+ms[ms.length-1])/2};return y;
+    }
+    roots.forEach((r,i)=>pl(r.id,0,0,(i%COLS)*CG,Math.floor(i/COLS)*RG));
+    return pos;
+}
+
+function computeRadialTreeLayout(nodes, edges, levelSeparation, nodeSpacing, angleSpreadDeg) {
+    // Computes x/y positions ourselves (polar coordinates converted to
+    // cartesian) instead of using vis-network's layout.hierarchical or a
+    // straight horizontal row per level. Reason: a straight row per level
+    // degenerates into a flat horizontal line whenever a level has many
+    // siblings (very common in Windows process trees, where one parent can
+    // spawn dozens of short-lived children). Spreading siblings across an
+    // arc below their parent (radius = depth, angle = position in the fan)
+    // keeps the parent-above-children ordering while producing a branching,
+    // circular look instead of a flat line.
+    const childrenOf = {};
+    const hasParent = new Set();
+    edges.forEach((e) => {
+        if (!childrenOf[e.from]) childrenOf[e.from] = [];
+        childrenOf[e.from].push(e.to);
+        hasParent.add(e.to);
+    });
+
+    const allIds = nodes.map((n) => n.id);
+    let roots = allIds.filter((id) => !hasParent.has(id));
+    if (!roots.length && allIds.length) roots = [allIds[0]]; // fallback for cyclical/rootless graphs
+
+    const angleSpreadRad = (angleSpreadDeg * Math.PI) / 180;
+    const positions = {};
+    const visited = new Set();
+
+    function countLeaves(id, seen) {
+        if (seen.has(id)) return 0;
+        seen.add(id);
+        const children = (childrenOf[id] || []).filter((c) => !seen.has(c));
+        if (!children.length) return 1;
+        return children.reduce((sum, c) => sum + countLeaves(c, seen), 0);
+    }
+
+    let cursorX = 0;
+    let cursorY = 0;
+    let rowMaxDepth = 0;
+
+    // Row-width budget: aim for a roughly square canvas instead of a single
+    // ever-widening horizontal strip. Without this, one root with a huge
+    // fan-out (e.g. a process with 100+ short-lived children) claims a
+    // proportionally huge horizontal slot, which pushes every subsequent
+    // Parent Process far to the right - forcing the eventual zoom-to-fit to
+    // shrink dramatically to capture the whole width, and making unrelated
+    // root processes look scattered far apart even though each individual
+    // branch is compact.
+    const totalLeavesAcrossRoots = roots.reduce((sum, r) => sum + Math.max(countLeaves(r, new Set()), 1), 0);
+    const rowWidthBudget = Math.max(Math.sqrt(totalLeavesAcrossRoots) * nodeSpacing * 2.5, nodeSpacing * 6);
+
+    roots.forEach((rootId) => {
+        if (visited.has(rootId)) return;
+
+        // each root gets its own horizontal slot (proportional to how many
+        // leaves its subtree has) and its own local arc, so independent
+        // process chains do not overlap or share the same fan
+        const leafCount = Math.max(countLeaves(rootId, new Set()), 1);
+        const subtreeWidth = leafCount * nodeSpacing;
+
+        if (cursorX > 0 && cursorX + subtreeWidth > rowWidthBudget) {
+            cursorX = 0;
+            cursorY += rowMaxDepth * levelSeparation + levelSeparation * 1.5;
+            rowMaxDepth = 0;
+        }
+
+        const rootX = cursorX + subtreeWidth / 2;
+        const rootY = cursorY;
+        cursorX += subtreeWidth;
+
+        let leafIndex = 0;
+        let maxDepthThisRoot = 0;
+
+        function visit(id, depth) {
+            if (visited.has(id)) return 0;
+            visited.add(id);
+            maxDepthThisRoot = Math.max(maxDepthThisRoot, depth);
+            const children = (childrenOf[id] || []).filter((c) => !visited.has(c));
+
+            let angle;
+            if (!children.length) {
+                angle = leafCount <= 1
+                    ? 0
+                    : (leafIndex / Math.max(leafCount - 1, 1)) * angleSpreadRad - (angleSpreadRad / 2);
+                leafIndex += 1;
+            } else {
+                const childAngles = children.map((c) => visit(c, depth + 1));
+                angle = childAngles.reduce((a, b) => a + b, 0) / childAngles.length;
+            }
+
+            // angle 0 points straight down on screen (parent stays above,
+            // deeper nodes radiate downward as radius grows with depth)
+            const radius = depth * levelSeparation;
+            const screenAngle = angle + Math.PI / 2;
+            positions[id] = {
+                x: rootX + radius * Math.cos(screenAngle),
+                y: rootY + radius * Math.sin(screenAngle)
+            };
+            return angle;
+        }
+
+        visit(rootId, 0);
+        rowMaxDepth = Math.max(rowMaxDepth, maxDepthThisRoot);
+    });
+
+    allIds.forEach((id) => {
+        if (!visited.has(id)) {
+            positions[id] = { x: cursorX, y: cursorY };
+            cursorX += nodeSpacing;
+        }
+    });
+
+    return positions;
+}
+
+function zoomToFitPositions(positions, container) {
+    // vis-network's own fit() only zooms OUT to fit everything on screen - it
+    // is documented to work for scale 0 to 1 and will not zoom IN past 1:1,
+    // which is exactly why a small/compact tree looked tiny even with lots of
+    // empty canvas around it. Since we already computed every node's exact
+    // x/y ourselves, we can compute the correct scale (including zooming in
+    // when the graph is small) instead of relying on fit()'s capped behavior.
+    const ids = Object.keys(positions);
+    if (!ids.length) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    ids.forEach((id) => {
+        const p = positions[id];
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+    });
+
+    const PADDING = 100; // canvas-space margin so nodes/labels are not clipped at the edges
+    const boxWidth = Math.max(maxX - minX, 1) + PADDING * 2;
+    const boxHeight = Math.max(maxY - minY, 1) + PADDING * 2;
+
+    const containerWidth = container.clientWidth || 800;
+    const containerHeight = container.clientHeight || 600;
+
+    const idealScale = Math.min(containerWidth / boxWidth, containerHeight / boxHeight);
+    const scale = Math.max(Math.min(idealScale, 3), 0.05); // clamp: never past 3x in, never below 0.05x out
+
+    network.moveTo({
+        position: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+        scale,
+        animation: false
+    });
+}
+
+function tagCrossLinkEdges(edgesList, alreadyClaimedChildren) {
+    // The layout only uses the first edge that reaches a given node to
+    // position it in the tree. Any additional edge pointing to an already
+    // positioned node is a cross-link (that process has more than one
+    // apparent parent) - style it distinctly (dashed, orange) so it stands
+    // out from the main branch structure instead of looking like a regular
+    // tree edge.
+    const claimed = new Set(alreadyClaimedChildren || []);
+    return edgesList.map((e) => {
+        if (claimed.has(e.to)) {
+            return { ...e, dashes: true, color: { color: '#f6ad55' } };
+        }
+        claimed.add(e.to);
+        return e;
+    });
+}
+
+function buildAsciiTree(nodeId) {
+    // Walks up parent edges to the root of this observed branch (a process
+    // has exactly one parent edge in this graph, so this is always a single
+    // straight chain, never a fork), then renders root -> ... -> selected
+    // node -> direct children using the same connector characters as the
+    // Linux `tree` command (`└──`, `├──`), so the shape reads exactly like
+    // a familiar process-tree printout, not a WPTV-specific format.
+    const nodeLabelOf = (id) => {
+        const n = nodesDataset.get(id);
+        if (!n) return id;
+        // Relations tab is a detail/investigation view, unlike the compact
+        // graph node label - shows the full path (falling back to the short
+        // name only if fullPath is missing/N/A) so an analyst never has to
+        // leave this tab to know exactly which binary ran.
+        const meta = n.meta || {};
+        const name = (meta.fullPath && meta.fullPath !== 'N/A' && meta.fullPath) || meta.name || n.label.split('\n')[0];
+        const pid = (n.meta && n.meta.pid) || id.replace('P', '');
+        return `${name} (${pid})`;
+    };
+
+    const ancestors = [];
+    let cursor = nodeId;
+    const seen = new Set([cursor]);
+    while (true) {
+        const parentEdge = edgesDataset.get({ filter: (e) => e.to === cursor })[0];
+        if (!parentEdge || seen.has(parentEdge.from)) break;
+        ancestors.unshift(parentEdge.from);
+        seen.add(parentEdge.from);
+        cursor = parentEdge.from;
+    }
+
+    const lines = [];
+    ancestors.forEach((id, idx) => {
+        lines.push(`${'    '.repeat(idx)}\u2514\u2500\u2500 ${nodeLabelOf(id)}`);
+    });
+
+    const selfDepth = ancestors.length;
+    const selfPrefix = selfDepth ? '\u2514\u2500\u2500 ' : '';
+    lines.push(`${'    '.repeat(selfDepth)}${selfPrefix}${nodeLabelOf(nodeId)}  <-- SELECTED`);
+
+    const childEdges = edgesDataset.get({ filter: (e) => e.from === nodeId });
+    const childDepth = selfDepth + 1;
+    childEdges.forEach((e, idx) => {
+        const isLast = idx === childEdges.length - 1;
+        const connector = isLast ? '\u2514\u2500\u2500 ' : '\u251c\u2500\u2500 ';
+        const childNode = nodesDataset.get(e.to);
+        const isNet = childNode && childNode.meta && childNode.meta.isNetworkNode;
+        const label = isNet ? `[network] ${childNode.label}` : nodeLabelOf(e.to);
+        lines.push(`${'    '.repeat(childDepth)}${connector}${label}`);
+    });
+
+    if (!childEdges.length) {
+        lines.push(`${'    '.repeat(childDepth)}(no children in the loaded window)`);
+    }
+
+    return lines.join('\n');
+}
+
+function exportGraphAsPng() {
+    const srcCanvas = document.querySelector('#mynetwork canvas');
+    if (!srcCanvas) { alert('No graph loaded yet.'); return; }
+    // Composite onto a solid background first - the network's own canvas is
+    // transparent, and the white text/edges would be invisible if exported
+    // as-is and viewed outside the app's dark page background.
+    const out = document.createElement('canvas');
+    out.width = srcCanvas.width;
+    out.height = srcCanvas.height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#1a202c';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(srcCanvas, 0, 0);
+
+    const agentLabel = (document.getElementById('agentDisplay').innerText || 'agent').trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'agent';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const link = document.createElement('a');
+    link.download = `WPTV_${agentLabel}_${timestamp}.png`;
+    link.href = out.toDataURL('image/png');
+    link.click();
+}
+
+function findBranchRoot(nodeId) {
+    let rootId = nodeId;
+    const seen = new Set([rootId]);
+    while (true) {
+        const parentEdge = edgesDataset.get({ filter: (e) => e.to === rootId })[0];
+        if (!parentEdge || seen.has(parentEdge.from)) break;
+        rootId = parentEdge.from;
+        seen.add(rootId);
+    }
+    return rootId;
+}
+
+function collectBranch(rootId) {
+    // Full subtree under rootId, in spawn order (BFS), used both for the
+    // diagram render and the table - one traversal, one source of truth.
+    const ids = [];
+    const queue = [rootId];
+    const seen = new Set([rootId]);
+    while (queue.length) {
+        const id = queue.shift();
+        ids.push(id);
+        const childEdges = edgesDataset.get({ filter: (e) => e.from === id });
+        childEdges.forEach((e) => {
+            if (!seen.has(e.to)) { seen.add(e.to); queue.push(e.to); }
+        });
+    }
+    return ids;
+}
+
+// Well-known Windows system binaries and the path prefix they legitimately
+// run from. A name match outside that path is a classic, well-documented
+// masquerading indicator (T1036.005) - not a certainty, so this is reported
+// as "possible", never as a confirmed verdict.
+const KNOWN_SYSTEM_BINARIES = {
+    'svchost.exe': ['c:\\windows\\system32\\', 'c:\\windows\\syswow64\\'],
+    'lsass.exe': ['c:\\windows\\system32\\'],
+    'csrss.exe': ['c:\\windows\\system32\\'],
+    'winlogon.exe': ['c:\\windows\\system32\\'],
+    'services.exe': ['c:\\windows\\system32\\'],
+    'explorer.exe': ['c:\\windows\\'],
+    'conhost.exe': ['c:\\windows\\system32\\', 'c:\\windows\\syswow64\\'],
+    'wininit.exe': ['c:\\windows\\system32\\'],
+    'taskhostw.exe': ['c:\\windows\\system32\\'],
+};
+
+function checkPossibleMasquerade(name, fullPath) {
+    if (!name || !fullPath) return null;
+    const expected = KNOWN_SYSTEM_BINARIES[name.toLowerCase()];
+    if (!expected) return null;
+    const pathLower = fullPath.toLowerCase();
+    const matches = expected.some((prefix) => pathLower.startsWith(prefix));
+    return matches ? null : `Possible masquerading: "${name}" is normally found in ${expected.join(' or ')}, but ran from ${fullPath}`;
+}
+
+function truncateForDisplay(text, maxLen) {
+    if (!text) return 'N/A';
+    return text.length > maxLen ? `${text.slice(0, maxLen)}... (truncated - see full value in the WPTV Basic Properties panel or Wazuh Discover)` : text;
+}
+
+async function captureBranchDiagram(rootId, allBranchIds) {
+    // Renders just this branch in a hidden, off-screen vis-network instance
+    // (same color scheme as the main view) and captures it as a PNG - this
+    // is the actual diagram the analyst already sees on screen, not a
+    // hand-drawn reconstruction, so it can never visually disagree with the
+    // live tool.
+    //
+    // Capped at 40 nodes (by spawn order, root always included): beyond that,
+    // a single flat image stops being legible no matter how well it's
+    // scaled/centered - the full list always still exists in the Process
+    // Timeline table that follows, this is a diagram, not the source of truth.
+    const DIAGRAM_NODE_CAP = 40;
+    const branchIds = allBranchIds.length > DIAGRAM_NODE_CAP ? allBranchIds.slice(0, DIAGRAM_NODE_CAP) : allBranchIds;
+    const truncated = allBranchIds.length > DIAGRAM_NODE_CAP;
+
+    const container = document.getElementById('reportGraphContainer');
+    const branchNodeSet = new Set(branchIds);
+    const reportNodes = branchIds.map((id) => nodesDataset.get(id)).filter(Boolean);
+    const reportEdges = edgesDataset.get({
+        filter: (e) => branchNodeSet.has(e.from) && branchNodeSet.has(e.to)
+    });
+
+    const positions = computeRadialTreeLayout(reportNodes, reportEdges, 110, 90, 150);
+    const positionedNodes = reportNodes.map((n) => ({
+        ...n,
+        x: positions[n.id] ? positions[n.id].x : 0,
+        y: positions[n.id] ? positions[n.id].y : 0,
+    }));
+
+    const tempNodes = new vis.DataSet(positionedNodes);
+    const tempEdges = new vis.DataSet(reportEdges);
+    const tempNetwork = new vis.Network(container, { nodes: tempNodes, edges: tempEdges }, {
+        nodes: { shape: 'dot', size: 22, font: { color: '#ffffff', size: 16 }, borderWidth: 2, shadow: false },
+        edges: { arrows: 'to', color: { color: '#4b5563' }, smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 } },
+        physics: false,
+        interaction: { zoomView: false, dragView: false },
+    });
+    // Force vis-network to recompute its internal canvas pixel size against
+    // the container's actual CSS dimensions right away, rather than trusting
+    // whatever size it detected at construction time (an off-screen
+    // absolutely-positioned container can be a fraction of a frame late to
+    // report its true size in some browsers, which produced a tiny,
+    // uncentered capture before this fix).
+    tempNetwork.setSize('1400px', '900px');
+    tempNetwork.redraw();
+
+    return new Promise((resolve) => {
+        const doCapture = () => {
+            // fit() first as a cheap baseline so vis-network's own transform
+            // matrix is definitely initialized against the final canvas size,
+            // then our own zoomToFitPositions overrides it with the precise
+            // scale/center (fit() alone cannot zoom in past 1:1).
+            tempNetwork.fit({ animation: false });
+            zoomToFitPositions(positions, container);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                setTimeout(() => {
+                    const canvas = container.querySelector('canvas');
+                    const out = document.createElement('canvas');
+                    out.width = canvas.width;
+                    out.height = canvas.height;
+                    const ctx = out.getContext('2d');
+                    ctx.fillStyle = '#1a202c';
+                    ctx.fillRect(0, 0, out.width, out.height);
+                    ctx.drawImage(canvas, 0, 0);
+                    const dataUrl = out.toDataURL('image/png');
+                    tempNetwork.destroy();
+                    resolve({ dataUrl, width: out.width, height: out.height, truncated, shownCount: branchIds.length, totalCount: allBranchIds.length });
+                }, 150);
+            }));
+        };
+
+        if (tempNetwork.body.data.nodes.length === 0) {
+            doCapture();
+        } else {
+            tempNetwork.once('afterDrawing', doCapture);
+        }
+    });
+}
+
+async function generateParentProcessReport(nodeId) {
+    if (typeof window.jspdf === 'undefined') {
+        alert('PDF library did not load - check your internet connection (jsPDF is loaded from a CDN) and try again.');
+        return;
+    }
+    const rootId = findBranchRoot(nodeId);
+    const rootNode = nodesDataset.get(rootId);
+    const rootMeta = (rootNode && rootNode.meta) || {};
+    const rootName = rootMeta.name || (rootNode && rootNode.label.split('\n')[0]) || rootId;
+    const branchIds = collectBranch(rootId).filter((id) => {
+        const n = nodesDataset.get(id);
+        return !(n && n.meta && n.meta.isNetworkNode);
+    });
+
+    // The root itself is often a synthetic/unobserved node (its own creation
+    // event fell outside the queried window) and so has no host of its own -
+    // fall back to the first descendant that does, since they are all on the
+    // same endpoint by construction (the whole branch comes from one query).
+    let effectiveHost = rootMeta.host;
+    if (!effectiveHost) {
+        for (const id of branchIds) {
+            const m = (nodesDataset.get(id) || {}).meta || {};
+            if (m.host) { effectiveHost = m.host; break; }
+        }
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+    const marginX = 40;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - marginX * 2;
+
+    // ---- Page 1: title + visual diagram ----
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(15, 34, 54);
+    doc.text(`Incident Response Report`, marginX, 44);
+    doc.setFontSize(13);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`Parent Process: ${rootName}`, marginX, 64);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Host: ${effectiveHost || 'N/A'}   |   Generated: ${new Date().toLocaleString()}   |   Processes in this branch: ${branchIds.length}`, marginX, 80);
+
+    const diagram = await captureBranchDiagram(rootId, branchIds);
+    const maxDiagramWidth = contentWidth;
+    const maxDiagramHeight = pageHeight - 150;
+    const scale = Math.min(maxDiagramWidth / diagram.width, maxDiagramHeight / diagram.height, 1);
+    const imgW = diagram.width * scale;
+    const imgH = diagram.height * scale;
+    doc.setFillColor(26, 32, 44);
+    doc.roundedRect(marginX, 95, contentWidth, maxDiagramHeight, 6, 6, 'F');
+    doc.addImage(diagram.dataUrl, 'PNG', marginX + (contentWidth - imgW) / 2, 95 + (maxDiagramHeight - imgH) / 2, imgW, imgH);
+    if (diagram.truncated) {
+        doc.setFontSize(8.5);
+        doc.setTextColor(200, 160, 40);
+        doc.text(`Diagram shows the first ${diagram.shownCount} of ${diagram.totalCount} processes in this branch (by spawn order) - see the full Process Timeline table for all of them.`, marginX + 8, 95 + maxDiagramHeight - 8);
+    }
+
+    // Legend
+    doc.setFontSize(8);
+    const legendY = pageHeight - 32;
+    doc.setFillColor(245, 197, 24); doc.circle(marginX + 4, legendY - 3, 4, 'F');
+    doc.setTextColor(80, 80, 80); doc.text('Parent Process (root)', marginX + 12, legendY);
+    doc.setFillColor(107, 114, 128); doc.circle(marginX + 140, legendY - 3, 4, 'F');
+    doc.text('Child process', marginX + 148, legendY);
+    doc.setDrawColor(201, 162, 39); doc.setLineWidth(1.5);
+    doc.circle(marginX + 250, legendY - 3, 4, 'S');
+    doc.text('Gold border = Sysmon telemetry correlated (hash/DLL/file/network)', marginX + 258, legendY);
+
+    // ---- Page 2: Executive Summary ----
+    doc.addPage();
+    let y = 50;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Executive Summary', marginX, y);
+    y += 22;
+
+    const enrichedCount = branchIds.filter((id) => hasEnrichment((nodesDataset.get(id) || {}).meta)).length;
+    const masqueradeFindings = [];
+    branchIds.forEach((id) => {
+        const m = (nodesDataset.get(id) || {}).meta || {};
+        const finding = checkPossibleMasquerade(m.name, m.fullPath);
+        if (finding) masqueradeFindings.push({ id, name: m.name, finding });
+    });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+    doc.setTextColor(40, 40, 40);
+    const summaryText = `This report documents process activity descending from "${rootName}" on host ${effectiveHost || 'N/A'}. `
+        + `A total of ${branchIds.length} process${branchIds.length === 1 ? '' : 'es'} ${branchIds.length === 1 ? 'was' : 'were'} observed in this branch. `
+        + `${enrichedCount} of them have correlated Sysmon telemetry (file hash, loaded DLLs, created files, or network connections), meaning their identity and behavior could be independently verified beyond the Windows process-creation log alone. `
+        + (masqueradeFindings.length
+            ? `${masqueradeFindings.length} process${masqueradeFindings.length === 1 ? '' : 'es'} in this branch ${masqueradeFindings.length === 1 ? 'is' : 'are'} flagged below as a possible case of process masquerading and should be reviewed first.`
+            : `No known system-binary masquerading pattern was detected in this branch (this check only covers a small set of well-known Windows process names, not a general verdict of "safe").`);
+    const summaryLines = doc.splitTextToSize(summaryText, contentWidth);
+    doc.text(summaryLines, marginX, y);
+    y += summaryLines.length * 14 + 16;
+
+    if (masqueradeFindings.length) {
+        doc.setFillColor(254, 226, 226);
+        doc.setDrawColor(220, 38, 38);
+        const boxHeight = 20 + masqueradeFindings.length * 14;
+        doc.roundedRect(marginX, y, contentWidth, boxHeight, 4, 4, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(153, 27, 27);
+        doc.text('Indicators for Review', marginX + 10, y + 15);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        masqueradeFindings.forEach((f, idx) => {
+            const lines = doc.splitTextToSize(`- ${f.finding}`, contentWidth - 20);
+            doc.text(lines, marginX + 10, y + 30 + idx * 14);
+        });
+        y += boxHeight + 20;
+    }
+
+    // ---- Process table (spawn order) ----
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Process Timeline (spawn order)', marginX, y);
+    y += 10;
+
+    const tableRows = branchIds.map((id, idx) => {
+        const n = nodesDataset.get(id);
+        const m = (n && n.meta) || {};
+        const parentEdge = edgesDataset.get({ filter: (e) => e.to === id })[0];
+        const parentNode = parentEdge ? nodesDataset.get(parentEdge.from) : null;
+        const flags = [];
+        if (checkPossibleMasquerade(m.name, m.fullPath)) flags.push('Possible masquerade');
+        if (hasEnrichment(m)) flags.push('Sysmon verified');
+        if (!m.observed) flags.push('Not observed (out of window)');
+        return [
+            idx + 1,
+            m.name || n.label.split('\n')[0],
+            m.pid || id.replace('P', ''),
+            parentNode ? ((parentNode.meta && parentNode.meta.name) || parentNode.label.split('\n')[0]) : '(root)',
+            m.user || 'N/A',
+            m.time ? m.time.replace('T', ' ').replace('Z', '') : 'N/A',
+            flags.join(', ') || '-'
+        ];
+    });
+
+    doc.autoTable({
+        startY: y + 6,
+        head: [['#', 'Process', 'PID', 'Parent Process', 'User', 'Time', 'Flags']],
+        body: tableRows,
+        margin: { left: marginX, right: marginX },
+        styles: { fontSize: 8.5, cellPadding: 4, overflow: 'linebreak' },
+        headStyles: { fillColor: [15, 34, 54], textColor: 255 },
+        columnStyles: { 0: { cellWidth: 24 }, 2: { cellWidth: 55 } },
+        didParseCell: (data) => {
+            if (data.section === 'body' && data.column.index === 6 && String(data.cell.raw).includes('masquerade')) {
+                data.cell.styles.textColor = [185, 28, 28];
+                data.cell.styles.fontStyle = 'bold';
+            }
+        }
+    });
+
+    // ---- Appendix: detail only for processes with something notable to say
+    // (enriched or flagged) - command lines are truncated, never dumped in
+    // full, to keep this readable for a non-technical audience ----
+    const notable = branchIds.filter((id) => {
+        const m = (nodesDataset.get(id) || {}).meta || {};
+        return hasEnrichment(m) || checkPossibleMasquerade(m.name, m.fullPath);
+    });
+
+    if (notable.length) {
+        doc.addPage();
+        y = 50;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(15, 34, 54);
+        doc.text('Process Detail (flagged or Sysmon-verified only)', marginX, y);
+        y += 24;
+
+        notable.forEach((id) => {
+            const n = nodesDataset.get(id);
+            const m = (n && n.meta) || {};
+            if (y > pageHeight - 100) { doc.addPage(); y = 50; }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(15, 34, 54);
+            doc.text(`${m.name || n.label.split('\n')[0]}  (PID ${m.pid})`, marginX, y);
+            y += 14;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(60, 60, 60);
+            const detailLines = [
+                `Path: ${m.fullPath || 'N/A'}`,
+                `Command line: ${truncateForDisplay(m.cmd, 180)}`,
+                `Host: ${m.host || 'N/A'}   IP: ${m.ip || 'N/A'}   User: ${m.user || 'N/A'}   Time: ${m.time || 'N/A'}`,
+            ];
+            const mq = checkPossibleMasquerade(m.name, m.fullPath);
+            if (mq) detailLines.push(mq);
+            if (m.sysmonProcess) {
+                const sp = m.sysmonProcess;
+                detailLines.push(`Sysmon hashes: ${truncateForDisplay(sp.hashes, 160)}`);
+                detailLines.push(`Sysmon integrity: ${sp.integrityLevel}   Company: ${sp.company}   Product: ${sp.product}`);
+            }
+            if (m.connections && m.connections.length) {
+                detailLines.push(`Network connections (${m.connections.length}): ${m.connections.slice(0, 3).map((c) => `${c.destinationIp}:${c.destinationPort}`).join(', ')}${m.connections.length > 3 ? ', ...' : ''}`);
+            }
+            if (m.imageLoads && m.imageLoads.length) {
+                detailLines.push(`DLLs loaded: ${m.imageLoads.length} total (see WPTV Detections tab for the full list)`);
+            }
+            if (m.fileCreates && m.fileCreates.length) {
+                detailLines.push(`Files created: ${m.fileCreates.length} total (see WPTV Detections tab for the full list)`);
+            }
+
+            detailLines.forEach((line) => {
+                const wrapped = doc.splitTextToSize(line, contentWidth);
+                if (y > pageHeight - 40) { doc.addPage(); y = 50; }
+                doc.text(wrapped, marginX, y);
+                y += wrapped.length * 12;
+            });
+            y += 14;
+        });
+    }
+
+    const safeName = String(rootName).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    doc.save(`REPORT - Parent Process - ${safeName}.pdf`);
+}
+
+function handleNodeRightClick(params) {
+    params.event.preventDefault();
+    const nid=network.getNodeAt(params.pointer.DOM);
+    if(!nid) return;
+    const n=nodesDataset.get(nid);if(!n||!n.meta) return;
+    const inM={};edgesDataset.forEach(e=>{inM[e.to]=e.from;});
+    let rid=nid;const vis=new Set();
+    while(inM[rid]&&!vis.has(rid)){vis.add(rid);rid=inM[rid];}
+    const rn=nodesDataset.get(rid);
+    const rname=rn?.meta?.name||rid;
+    let menu=document.getElementById('ctxMenu');
+    if(!menu){menu=document.createElement('div');menu.id='ctxMenu';menu.style.cssText='position:fixed;background:#1f2937;border:1px solid #374151;border-radius:6px;padding:4px 0;z-index:9999;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.5);display:none;';document.body.appendChild(menu);}
+    menu.innerHTML=`<div onclick="filterToTree('${rid}');this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#e2e8f0;font-size:13px;border-bottom:1px solid #374151;">🔍 Filter only: <strong>${rname}</strong></div><div onclick="this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#6b7280;font-size:12px;">Cancel</div>`;
+    menu.style.display='block';menu.style.left=params.event.clientX+'px';menu.style.top=params.event.clientY+'px';
+    const hide=(e)=>{if(!menu.contains(e.target)){menu.style.display='none';document.removeEventListener('click',hide);}};
+    setTimeout(()=>document.addEventListener('click',hide),10);
+}
+
+function showDetailPanel(nodeId) {
+    const node = nodesDataset.get(nodeId);
+    if (!node) return;
+
+    const meta = node.meta || {};
+    currentDetailNodeId = nodeId;
+    currentDetailMeta = meta;
+    document.getElementById('detailPlaceholder').style.display = 'none';
+    document.getElementById('detailTabs').style.display = 'block';
+    document.getElementById('detailTitle').innerText = `${meta.name || node.label} (PID ${meta.pid || nodeId.replace('P','')})`;
+
+    // Badge pills (Elastic-style alert/file/lib/connection counts)
+    renderBadgePills(meta);
+
+    // Alert timeline - runs early to populate tab badge counter
+    renderAlertTimeline(meta);
+
+    // Basic Properties: structured Elastic-style field table
+    const body = document.getElementById('detailBody');
+    const discoverLink = document.getElementById('discoverLink');
+
+    if (meta.observed) {
+        renderFieldTable(meta);
+        body.style.display = 'none';
+        document.getElementById('detailWarning').style.display = 'none';
+    } else {
+        document.getElementById('detailFieldTable').style.display = 'none';
+        body.innerText = `PID: ${meta.pid}\nPATH: ${meta.fullPath || 'N/A'}`;
+        body.style.display = 'block';
+        document.getElementById('detailWarning').style.display = 'block';
+    }
+
+    const link = buildDiscoverLink(meta, nodeId);
+    if (link) {
+        discoverLink.href = link;
+        discoverLink.innerText = meta.observed
+            ? 'Open in Wazuh Discover \u2192'
+            : 'Search Discover for all events of this process (wider range) \u2192';
+        discoverLink.style.display = 'block';
+    } else {
+        discoverLink.style.display = 'none';
+    }
+
+    // Relations tab
+
+    if (meta.connections && meta.connections.length) {
+        const connLines = meta.connections.map((c) =>
+            `${c.sourceIp}:${c.sourcePort} -> ${c.destinationIp}:${c.destinationPort} (${c.protocol}) @ ${c.time}`
+        );
+    } else {
+    }
+
+    // Detections tab: Sysmon telemetry (EID 1/7/11)
+    let hasDetections = false;
+
+    const sysmonProcessBox = document.getElementById('detailSysmonProcess');
+    if (meta.sysmonProcess) {
+        const sp = meta.sysmonProcess;
+        const spLines = [
+            'SYSMON PROCESS DETAILS (EventID 1):',
+            `HASHES: ${sp.hashes}`,
+            `PROCESS GUID: ${sp.processGuid}`,
+            `INTEGRITY: ${sp.integrityLevel}`,
+            `COMPANY: ${sp.company}`,
+            `PRODUCT: ${sp.product}`,
+            `DESCRIPTION: ${sp.description}`
+        ];
+        sysmonProcessBox.innerText = spLines.join('\n');
+        sysmonProcessBox.style.display = 'block';
+        hasDetections = true;
+    } else {
+        sysmonProcessBox.style.display = 'none';
+    }
+
+    const imageLoadsBox = document.getElementById('detailImageLoads');
+    if (meta.imageLoads && meta.imageLoads.length) {
+        imageLoadsBox.innerText = `DLLS LOADED (Sysmon EventID 7):\n${meta.imageLoads.join('\n')}`;
+        imageLoadsBox.style.display = 'block';
+        hasDetections = true;
+    } else {
+        imageLoadsBox.style.display = 'none';
+    }
+
+    const fileCreatesBox = document.getElementById('detailFileCreates');
+    if (meta.fileCreates && meta.fileCreates.length) {
+        fileCreatesBox.innerText = `FILES CREATED (Sysmon EventID 11):\n${meta.fileCreates.join('\n')}`;
+        fileCreatesBox.style.display = 'block';
+        hasDetections = true;
+    } else {
+        fileCreatesBox.style.display = 'none';
+    }
+
+    // Sysmon detection rules (EID-specific rule hits with Discover links)
+    const sysmonDetsBox = document.getElementById('detailSysmonRules');
+    const sysmonDets = meta.sysmon_detections || [];
+    if (sysmonDets.length) {
+        const EID_NAMES = {
+            '1':  'Process Creation', '3':  'Network Connection', '6':  'Driver Load',
+            '7':  'Image Load',       '8':  'CreateRemoteThread', '9':  'Raw Access Read',
+            '10': 'Process Access',   '11': 'File Create',        '13': 'Registry Value Set',
+            '17': 'Pipe Created',     '18': 'Pipe Connected',     '20': 'WmiEvent Consumer',
+            '24': 'Clipboard Change', '25': 'Process Tampering',  '29': 'File Executable Detected'
+        };
+        const cards = sysmonDets.map(d => {
+            const eidName = EID_NAMES[d.eventId] || `EventID ${d.eventId}`;
+            const levelColor = d.ruleLevel >= 12 ? '#ef4444' : d.ruleLevel >= 8 ? '#f59e0b' : '#6b7280';
+
+            // Build Discover link for this specific Sysmon event
+            let discoverUrl = '';
+            let indexPattern = WAZUH_DISCOVER_DATA_VIEW_ID;
+            if (WAZUH_DASHBOARD_BASE_URL) {
+                indexPattern = d.sourceIndex || WAZUH_DISCOVER_DATA_VIEW_ID;
+                const parts = [`data.win.system.eventID:"${d.eventId}"`];
+                if (d.computer && d.computer !== 'N/A')
+                    parts.push(`data.win.system.computer:"${d.computer}"`);
+                if (d.ruleId && d.ruleId !== 'N/A')
+                    parts.push(`rule.id:"${d.ruleId}"`);
+                // Use the PID field and value sent by the backend — avoids
+                // hardcoding field names that differ by event type (EID 4104
+                // stores PID in data.win.system.processID, not eventdata).
+                if (d.pidField && d.pidValue) {
+                    parts.push(`${d.pidField}:"${d.pidValue}"`);
+                } else if (meta.pid) {
+                    // Fallback: legacy Sysmon decimal conversion
+                    parts.push(`data.win.eventdata.processId:"${parseInt(meta.pid, 16)}"`);
+                }
+                const lucene = parts.join(' AND ');
+                const activeW = getActiveTimeWindowIso();
+                // Use the index where the event was actually found, not always wazuh-alerts-*
+                const _a = `(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'${indexPattern}',view:discover))`;
+                const _q = `(filters:!(),query:(language:lucene,query:'${lucene}'))`;
+                const _g = `(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${activeW.fromIso}',to:'${activeW.toIso}'))`;
+                discoverUrl = `${WAZUH_DASHBOARD_BASE_URL}/app/data-explorer/discover#?_a=${_a}&_q=${_q}&_g=${_g}`;
+            }
+
+            const mitreIds = d.mitre && d.mitre.id
+                ? (Array.isArray(d.mitre.id) ? d.mitre.id : [d.mitre.id]).join(' · ') : '';
+            const safeUrl1 = discoverUrl ? discoverUrl.replace(/"/g, '&quot;') : '';
+            const link = safeUrl1
+                ? `<a href="${safeUrl1}" target="_blank" rel="noopener"
+                      style="color:#00a0d1;font-size:10px;text-decoration:none;">
+                     Open EID ${d.eventId} in Discover (${indexPattern}) &#8594;</a>` : '';
+
+            return `<div style="border-left:3px solid ${levelColor};padding:7px 10px;margin-bottom:8px;background:#1a202c;border-radius:0 4px 4px 0;">
+  <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">
+    EID ${d.eventId} &mdash; ${eidName}
+    <span style="background:${levelColor};color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;font-size:10px;">Level ${d.ruleLevel}</span>
+  </div>
+  <div style="color:#e2e8f0;font-size:12px;font-weight:600;margin-bottom:2px;">${d.ruleDesc || 'N/A'}</div>
+  <div style="font-size:11px;color:#6b7280;">
+    <span style="color:#7dd3fc;">rule.id:</span> ${d.ruleId}
+    &nbsp;&middot;&nbsp;
+    <span style="color:#7dd3fc;">providerName:</span> ${d.providerName || 'Microsoft-Windows-Sysmon'}
+    ${mitreIds ? `&nbsp;&middot;&nbsp;<span style="color:#a78bfa;">&#9731; MITRE: ${mitreIds}</span>` : ''}
+  </div>
+  <div style="margin-top:5px;">${link}</div>
+</div>`;
+        });
+        sysmonDetsBox.innerHTML = `<div style="font-size:11px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #374151;padding-bottom:4px;margin-bottom:8px;">
+  &#9650; DETECTION EVENTS (${sysmonDets.length})</div>${cards.join('')}`;
+        sysmonDetsBox.style.display = 'block';
+        hasDetections = true;
+    } else {
+        sysmonDetsBox.style.display = 'none';
+    }
+
+    document.getElementById('detectionsEmpty').style.display = hasDetections ? 'none' : 'block';
+
+    // Default to Alerts tab if there are detections, otherwise Basic Properties
+    showDetailTab((meta.detections && meta.detections.length > 0) ? 'alerts' : 'basic');
+
+    // Comments tab
+}
+
+function showNetworkNodeInfo(nodeId, node) {
+    document.getElementById('detailPlaceholder').style.display = 'none';
+    document.getElementById('detailTabs').style.display = 'block';
+    document.getElementById('detailTitle').innerText = `External IP: ${node.meta.ip}`;
+    showDetailTab('relations');
+
+    document.getElementById('badgePills').style.display = 'none';
+    document.getElementById('detailBody').style.display = 'none';
+    document.getElementById('detailFieldTable').style.display = 'none';
+    document.getElementById('detailWarning').style.display = 'none';
+    document.getElementById('detailSysmonProcess').style.display = 'none';
+    document.getElementById('detailImageLoads').style.display = 'none';
+    document.getElementById('detailFileCreates').style.display = 'none';
+    document.getElementById('detailSysmonRules').style.display = 'none';
+    document.getElementById('detectionsEmpty').style.display = 'block';
+    document.getElementById('alertTimeline').innerHTML = '';
+    document.getElementById('alertsEmpty').style.display = 'block';
+    document.getElementById('alertBadge').style.display = 'none';
+    document.getElementById('tabBtn-alerts').style.color = '';
+
+    const incomingEdges = edgesDataset.get({ filter: (e) => e.to === nodeId });
+    const lines = [`Processes connecting to ${node.meta.ip} (in this loaded tree):`];
+    incomingEdges.forEach((e) => {
+        const srcNode = nodesDataset.get(e.from);
+        const name = (srcNode && srcNode.meta && (srcNode.meta.fullPath || srcNode.meta.name)) || e.from;
+        lines.push(`  <- ${name} (${e.from.replace('P', '')})${e.label ? ' ' + e.label : ''}`);
+    });
+
+    const discoverLink = document.getElementById('discoverLink');
+    const link = buildDiscoverLink(node.meta, nodeId);
+    if (link) {
+        discoverLink.href = link;
+        discoverLink.innerText = `Search Discover for EID 3 connections to ${node.meta.ip} \u2192`;
+        discoverLink.style.display = 'block';
+    } else {
+        discoverLink.style.display = 'none';
+    }
+
+    currentDetailNodeId = null;
+    currentDetailMeta = null;
+}
+
+function showDetailTab(tab) {
+    ['basic', 'alerts', 'detections'].forEach((t) => {
+        const pane = document.getElementById('tabPane-' + t);
+        const btn  = document.getElementById('tabBtn-'  + t);
+        if (pane) pane.style.display = (t === tab) ? 'block' : 'none';
+        if (btn)  btn.classList.toggle('active', t === tab);
+    });
+}
+
+function getAnalystName() {
+    // This is a real standalone tool deployed to the analyst's own Wazuh
+    // server, not a sandboxed Claude artifact - localStorage here just
+    // remembers the analyst's name across sessions on their own machine.
+    let name = localStorage.getItem('wptv_analyst_name');
+    if (!name) {
+        name = (prompt('Your name (shown on comments you add):') || 'analyst').trim() || 'analyst';
+        localStorage.setItem('wptv_analyst_name', name);
+    }
+    return name;
+}
+
+function renderComments(comments) {
+    if (!comments || !comments.length) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+    list.innerHTML = '';
+    comments.forEach((c) => {
+        const entry = document.createElement('div');
+        entry.className = 'commentEntry';
+        const metaLine = document.createElement('div');
+        metaLine.className = 'commentMeta';
+        metaLine.innerText = `${c.author} @ ${c.timestamp}`;
+        const textLine = document.createElement('div');
+        textLine.className = 'commentText';
+        textLine.innerText = c.text;
+        entry.appendChild(metaLine);
+        entry.appendChild(textLine);
+        list.appendChild(entry);
+    });
+}
+
+async function loadComments() {
+    if (!currentDetailNodeId) return;
+    const pid = (currentDetailMeta && currentDetailMeta.pid) || currentDetailNodeId.replace('P', '');
+    const identity = buildIdentityParams();
+    try {
+        const res = await fetch(`/wptv/api/comments?pid=${encodeURIComponent(pid)}&${identity || ''}`);
+        const data = await res.json();
+        renderComments(data.comments || []);
+    } catch (e) {
+        renderComments([]);
+    }
+}
+
+async function submitComment() {
+    if (!currentDetailNodeId) return;
+    const text = input.value.trim();
+    if (!text) return;
+    const pid = (currentDetailMeta && currentDetailMeta.pid) || currentDetailNodeId.replace('P', '');
+    const agentId = document.getElementById('agentInput').value.trim();
+    const host = document.getElementById('hostInput').value.trim();
+    const ip = document.getElementById('ipInput').value.trim();
+    const author = getAnalystName();
+    try {
+        const res = await fetch('/wptv/api/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pid, text, author, agent_id: agentId, host, ip }),
+        });
+        const data = await res.json();
+        renderComments(data.comments || []);
+        input.value = '';
+    } catch (e) {
+        alert('Could not save the comment - check the server connection.');
+    }
+}
+
+
+// ═══ MORE node: paginar filhos, toggle expand/collapse ════════════════════
+const MORE_THRESHOLD = 10;
+const moreStore = {};
+
+function collectSubtree(ids) {
+    const cm={};
+    edgesDataset.forEach(e=>{if(!cm[e.from]) cm[e.from]=[];cm[e.from].push(e.to);});
+    const r=new Set(ids),q=[...ids];
+    while(q.length){const n=q.shift();(cm[n]||[]).forEach(x=>{if(!r.has(x)){r.add(x);q.push(x);}});}
+    return [...r];
+}
+
+function applyChildrenPagination() {
+    if(!nodesDataset||!edgesDataset) return;
+    const cm={};
+    edgesDataset.forEach(e=>{if(!cm[e.from]) cm[e.from]=[];cm[e.from].push(e.to);});
+    Object.entries(cm).forEach(([pid,children])=>{
+        if(children.length<=MORE_THRESHOLD) return;
+        if(nodesDataset.get('MORE:'+pid)) return;
+        const sorted=[...children].sort((a,b)=>((nodesDataset.get(a)?.meta?.order)||999)-((nodesDataset.get(b)?.meta?.order)||999));
+        const toHide=sorted.slice(MORE_THRESHOLD);
+        const allHid=collectSubtree(toHide);
+        const hidNodes=allHid.map(id=>nodesDataset.get(id)).filter(Boolean);
+        const hidEdges=edgesDataset.get({filter:e=>allHid.includes(e.from)||allHid.includes(e.to)});
+        edgesDataset.remove(hidEdges.map(e=>e.id));
+        nodesDataset.remove(allHid);
+        const lastId=sorted[MORE_THRESHOLD-1];
+        let lp=null;
+        try{ if(network && nodesDataset.get(lastId)) lp=network.getPosition(lastId); }catch(e){ lp=null; }
+        let pp=null;
+        try{ if(network && nodesDataset.get(pid)) pp=network.getPosition(pid); }catch(e){ pp=null; }
+        const mid='MORE:'+pid;
+        nodesDataset.add({
+            id:mid, label:'+'+toHide.length+' MORE',
+            x:lp?lp.x:(pp?pp.x+260:0),
+            y:lp?lp.y+80:(pp?pp.y:0),
+            shape:'circle',widthConstraint:{minimum:70,maximum:70},
+            color:{background:'#b91c1c',border:'#7f1d1d'},
+            font:{color:'#fff',size:13,bold:true,face:'Arial'},
+            title:'Double-click to expand / collapse',
+            meta:{isMoreNode:true,parentId:pid}
+        });
+        edgesDataset.add({id:'MORE_EDGE:'+pid,from:pid,to:mid,label:'',dashes:[6,4],color:{color:'#b91c1c'}});
+        moreStore[mid]={parentId:pid,
+            nodes:hidNodes,
+            parentEdges:hidEdges.filter(e=>e.from===pid),
+            internalEdges:hidEdges.filter(e=>e.from!==pid),
+            expanded:false};
+    });
+}
+
+function toggleMoreNode(mid) {
+    const s=moreStore[mid];if(!s) return;
+    if(s.expanded) collapseMoreNode(mid); else expandMoreNode(mid);
+}
+
+function expandMoreNode(mid) {
+    const s=moreStore[mid];if(!s||s.expanded) return;
+    const mp=network?network.getPosition(mid):{x:0,y:0};
+    const V=80;
+    const direct=s.nodes.filter(n=>s.parentEdges.some(e=>e.to===n.id));
+    const deep=s.nodes.filter(n=>!direct.find(d=>d.id===n.id));
+    const placed={};
+    direct.forEach((n,i)=>{placed[n.id]={x:mp.x,y:mp.y+(i-(direct.length-1)/2)*V};});
+    deep.forEach(n=>{placed[n.id]={x:mp.x+260,y:mp.y};});
+    nodesDataset.add(s.nodes.map(n=>({...n,x:placed[n.id]?.x??mp.x,y:placed[n.id]?.y??mp.y})));
+    edgesDataset.add([...s.parentEdges,...s.internalEdges]);
+    nodesDataset.update({id:mid,label:'- '+direct.length+' LESS',
+        color:{background:'#475569',border:'#334155'},title:'Double-click to collapse'});
+    s.expanded=true;
+}
+
+function collapseMoreNode(mid) {
+    const s=moreStore[mid];if(!s||!s.expanded) return;
+    edgesDataset.remove([...s.parentEdges.map(e=>e.id),...s.internalEdges.map(e=>e.id)]);
+    nodesDataset.remove(s.nodes.map(n=>n.id));
+    nodesDataset.update({id:mid,label:'+'+s.parentEdges.length+' MORE',
+        color:{background:'#b91c1c',border:'#7f1d1d'},title:'Double-click to expand / collapse'});
+    s.expanded=false;
+}
+
+// ═══ Filter tree (right-click) ════════════════════════════════════════════
+let savedFltNodes=null,savedFltEdges=null;
+function filterToTree(rootId) {
+    const cm={};
+    edgesDataset.forEach(e=>{if(!cm[e.from]) cm[e.from]=[];cm[e.from].push(e.to);});
+    const sub=new Set([rootId]),q=[rootId];
+    while(q.length){const n=q.shift();(cm[n]||[]).forEach(x=>{if(!sub.has(x)){sub.add(x);q.push(x);}});}
+    nodesDataset.forEach(n=>{if(n.meta?.isMoreNode&&sub.has(n.meta.parentId)) sub.add(n.id);});
+    savedFltNodes=nodesDataset.get({filter:n=>!sub.has(n.id)});
+    savedFltEdges=edgesDataset.get({filter:e=>!sub.has(e.from)&&!sub.has(e.to)});
+    nodesDataset.remove(savedFltNodes.map(n=>n.id));
+    edgesDataset.remove(savedFltEdges.map(e=>e.id));
+    document.getElementById('showAllBtn').style.display='inline-block';
+    if(network) setTimeout(()=>network.fit({animation:{duration:400}}),50);
+}
+function showAllTrees() {
+    if(!savedFltNodes) return;
+    nodesDataset.add(savedFltNodes);
+    edgesDataset.add(savedFltEdges);
+    savedFltNodes=savedFltEdges=null;
+    document.getElementById('showAllBtn').style.display='none';
+    if(network) setTimeout(()=>network.fit({animation:{duration:400}}),50);
+}
+
+// ═══ Export helpers ═══════════════════════════════════════════════════════
+
+// EXPORT PDF:
+// - Node selected  → detailed report for that node's branch (generateParentProcessReport)
+// - Nothing selected → full report of all trees loaded in this time range (generateFullReport)
+async function exportAsPdf() {
+    if (typeof window.jspdf === 'undefined') {
+        alert('PDF library did not load. Check your internet connection (jsPDF loads from CDN) and try again.');
+        return;
+    }
+    if (!nodesDataset || nodesDataset.length === 0) {
+        alert('No processes loaded. Run ANALYZE first.');
+        return;
+    }
+    if (currentDetailNodeId) {
+        await generateParentProcessReport(currentDetailNodeId);
+    } else {
+        await generateFullReport();
+    }
+}
+
+async function generateFullReport() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+    const marginX = 40;
+    const pageWidth  = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - marginX * 2;
+
+    const agentId = document.getElementById('agentInput').value.trim() || 'N/A';
+    const rangeEl = document.getElementById('timeRange');
+    const range   = rangeEl ? rangeEl.options[rangeEl.selectedIndex]?.text || rangeEl.value : 'N/A';
+    const total   = document.getElementById('statTotal')?.innerText || '0';
+
+    // ── Cover: dark header ────────────────────────────────────────────────
+    doc.setFillColor(15, 34, 54);
+    doc.rect(0, 0, pageWidth, 90, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20); doc.setTextColor(0, 169, 224);
+    doc.text('WAZUH Process Tree Viewer', marginX, 38);
+    doc.setFontSize(12); doc.setTextColor(168, 216, 240);
+    doc.text('Threat Hunting & Incident Response  -  Full Process Report', marginX, 58);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9); doc.setTextColor(90, 143, 168);
+    doc.text(`Agent: ${agentId}  |  Time Range: ${range}  |  Total Processes: ${total}  |  Generated: ${new Date().toLocaleString()}`, marginX, 78);
+
+    // ── Cover body: Executive Summary + Acknowledgements ─────────────────
+    let y = 115;
+    const lineH = 13;
+
+    function pdfSection(title, body) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.setTextColor(0, 100, 160);
+        doc.text(title, marginX, y); y += lineH + 2;
+        doc.setDrawColor(0, 169, 224); doc.setLineWidth(0.5);
+        doc.line(marginX, y - 4, pageWidth - marginX, y - 4); y += 4;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        doc.setTextColor(44, 62, 80);
+        const lines = doc.splitTextToSize(body, contentWidth);
+        doc.text(lines, marginX, y); y += lines.length * lineH + 10;
+    }
+
+    pdfSection('Executive Summary',
+        'This report provides an executive overview of process activity collected during the selected analysis period. ' +
+        'Rather than presenting every individual process graph on the cover page, the report focuses on delivering a concise ' +
+        'summary of the observed execution landscape and directing the analyst to the detailed process trees that follow.\n\n' +
+        'Each subsequent section organises processes by their parent process, preserving the original execution hierarchy and ' +
+        'providing essential context such as parent-child relationships, executing user, and associated security alerts when available.\n\n' +
+        'This approach allows analysts, incident responders, and threat hunters to quickly identify abnormal process execution chains, ' +
+        'understand process ancestry, validate legitimate operating system behaviour, and investigate suspicious activity with greater efficiency.\n\n' +
+        'The Wazuh Process Tree Viewer (WPTV) was designed to transform raw process creation events into structured execution trees, ' +
+        'reducing investigation time while improving visibility into endpoint activity. By combining process relationships with security ' +
+        'telemetry, WPTV enables faster triage, more effective threat hunting, and a clearer understanding of complex execution flows.');
+
+    pdfSection('Acknowledgements',
+        'The Wazuh Process Tree Viewer (WPTV) was created with passion and dedication by Kislley Rodrigues (a.k.a. m0us3r) ' +
+        'as an open-source contribution to the Wazuh ecosystem.\n\n' +
+        'Special thanks to the entire Wazuh Community for its continuous support and valuable feedback throughout the project\'s development.\n\n' +
+        'The author would also like to express sincere gratitude to the Wazuh Ambassador Program team  -  Katia Bukovac, ' +
+        'Raquel Presas Salguero, and Carolina Landa  -  for their encouragement, trust, and continued support.\n\n' +
+        'Special thanks to Awwal Ishiaku for his support throughout the development process, and to William Weber for testing ' +
+        'the project and providing valuable feedback.\n\n' +
+        'Finally, sincere appreciation goes to Santiago Bassett, CEO of Wazuh, for his leadership, vision, and continued ' +
+        'commitment to the growth of the Wazuh ecosystem, helping foster an environment where community-driven innovation can thrive.\n\n' +
+        'This project reflects the collaborative spirit of the open-source community, where every suggestion, discussion, ' +
+        'and contribution helps strengthen the ecosystem for everyone.');
+
+    // ── Build tree data ───────────────────────────────────────────────────
+    const hasIncoming = new Set();
+    edgesDataset.forEach(e => hasIncoming.add(e.to));
+    const childMap = {};
+    edgesDataset.forEach(e => { if (!childMap[e.from]) childMap[e.from] = []; childMap[e.from].push(e.to); });
+
+    const roots = [];
+    nodesDataset.forEach(n => {
+        if (n.meta && !n.meta.isNetworkNode && !n.meta.isMoreNode && !hasIncoming.has(n.id))
+            roots.push(n);
+    });
+
+    
+
+    // ── Page 2: summary table ─────────────────────────────────────────────
+    doc.addPage(); y = 50;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Process Trees Summary', marginX, y); y += 10;
+
+    const summaryRows = roots.map((root, i) => {
+        const tree   = collectFullTree(root.id);
+        const name   = root.meta?.name || root.label?.split('\n')[0] || root.id;
+        const host   = root.meta?.host || tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const user   = root.meta?.user || '–';
+        // alerts: badgeCounts covers ALL alert types (Wazuh rules + Sysmon detections)
+        const alerts = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
+        return [i + 1, name, user, host, tree.length];
+    });
+
+    doc.autoTable({
+        startY: y + 6,
+        head: [['#', 'Parent Process', 'User', 'Host', 'Processes']],
+        body: summaryRows,
+        margin: { left: marginX, right: marginX },
+        tableWidth: contentWidth,
+        styles: { fontSize: 9, cellPadding: 5, halign: 'left' },
+        headStyles: { fillColor: [15, 34, 54], textColor: 255 },
+        columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 180 },
+            3: { cellWidth: 120 },
+            4: { cellWidth: 70, halign: 'center' },
+            5: { cellWidth: 55, textColor: [185, 28, 28], fontStyle: 'bold', halign: 'center' },
+        },
+    });
+
+    // ── Detailed pages: one per tree ──────────────────────────────────────
+    roots.forEach((root, ri) => {
+        const tree     = collectFullTree(root.id);
+        const rootName = root.meta?.name || root.label?.split('\n')[0] || root.id;
+        const rootUser = root.meta?.user || root.meta?.targetUser || '-';
+        const host     = root.meta?.host || tree.find(t => t.node.meta?.host)?.node.meta?.host || 'N/A';
+        const totalAl  = tree.reduce((s, t) => s + (t.node.meta?.badgeCounts?.alerts || 0), 0);
+
+        doc.addPage(); y = 50;
+
+        doc.setFillColor(185, 28, 28);
+        doc.rect(marginX, y - 16, contentWidth, 24, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(
+            `[${ri + 1}] ${rootName}  |  User: ${rootUser}  |  Host: ${host}  |  ${tree.length} processes  |  ${totalAl > 0 ? '⚠ ' + totalAl + ' alerts' : 'No alerts'}`,
+            marginX + 8, y + 2
+        );
+        y += 22;
+
+        // Table: PROCESS, PARENT, USER, HOST
+        const tableRows = tree.map(({ id, depth, node: n }) => {
+            const m          = n.meta || {};
+            const indent     = '  '.repeat(depth) + (depth > 0 ? '└ ' : '');
+            const parentEdge = edgesDataset.get({ filter: e => e.to === id })[0];
+            const parentNode = parentEdge ? nodesDataset.get(parentEdge.from) : null;
+            const parentName = parentNode?.meta?.name || m.name || '';
+            const nodeHost   = m.host || host;
+            return [
+                m.order != null ? m.order : '',
+                indent + (m.name || n.label?.split('\n')[0] || id),
+                parentName,
+                m.user || m.targetUser || '-',
+                nodeHost,
+            ];
+        });
+
+        doc.autoTable({
+            startY: y,
+            head: [['#', 'Process', 'Parent', 'User', 'Host']],
+            body: tableRows,
+            margin: { left: marginX, right: marginX },
+            tableWidth: contentWidth,
+            styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+            headStyles: { fillColor: [30, 58, 95], textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 22, halign: 'center' },
+                1: { cellWidth: 180 },
+                2: { cellWidth: 160 },
+                3: { cellWidth: 110 },
+                4: { cellWidth: 110 },
+            },
+        });
+    });
+
+    // ── Final page: Process frequency pie chart ───────────────────────────
+    doc.addPage();
+    const PIE_COLORS = [
+        [41,128,185],[192,57,43],[39,174,96],[211,84,0],[142,68,173],
+        [22,160,133],[243,156,18],[52,73,94],[231,76,60],[26,188,156],
+        [149,165,166],
+    ];
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.setTextColor(15, 34, 54);
+    doc.text('Top Parent Processes - Frequency', pageWidth / 2, 55, { align: 'center' });
+    doc.setDrawColor(0, 169, 224); doc.setLineWidth(0.5);
+    doc.line(marginX, 60, pageWidth - marginX, 60);
+
+    // Count ONLY root (Parent Process) nodes - no children counted
+    const rootHasIncoming = new Set();
+    edgesDataset.forEach(e => rootHasIncoming.add(e.to));
+    // Also include roots from moreStore hidden nodes
+    Object.values(moreStore).forEach(s => {
+        [...s.internalEdges, ...s.parentEdges].forEach(e => rootHasIncoming.add(e.to));
+    });
+
+    const procCount = {};
+    const allNodeLookup = {};
+    nodesDataset.forEach(n => { allNodeLookup[n.id] = n; });
+    Object.values(moreStore).forEach(s => s.nodes.forEach(n => { if (!allNodeLookup[n.id]) allNodeLookup[n.id] = n; }));
+
+    Object.values(allNodeLookup).forEach(n => {
+        if (!n.meta || n.meta.isNetworkNode || n.meta.isMoreNode) return;
+        // ONLY root nodes (no incoming edge = Parent Process)
+        if (rootHasIncoming.has(n.id)) return;
+        const name = n.meta.name || n.label?.split('\n')[0] || 'unknown';
+        procCount[name] = (procCount[name] || 0) + 1;
+    });
+    const totalRoots = Object.values(procCount).reduce((s, v) => s + v, 0) || 1;
+    let topProcs = Object.entries(procCount).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    // Add "Others" for the remainder (if there are more than 10 distinct roots)
+    const topTotal = topProcs.reduce((s, [, c]) => s + c, 0);
+    if (topTotal < totalRoots) topProcs.push(['Others', totalRoots - topTotal]);
+
+    // Layout: pie in upper 60% of content area, legend in bottom 40%
+    const legendRows = Math.ceil(topProcs.length / 2);
+    const legendH    = legendRows * 16 + 16;
+    const pieZoneH   = pageHeight - 90 - legendH;
+    const cx = pageWidth / 2;
+    const cy = 70 + pieZoneH / 2;
+    const r  = Math.min(pieZoneH / 2 - 50, contentWidth * 0.26);
+
+    // Draw slices (fill == draw colour, EPSILON overlap, no gap artefacts)
+    function drawSlice(doc, cx, cy, r, a1, a2, rgb) {
+        const STEPS = 44, EPSILON = 0.014;
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+        doc.setLineWidth(0);
+        for (let i = 0; i < STEPS; i++) {
+            const ta1 = a1 + (a2 - a1) * i       / STEPS - (i > 0 ? EPSILON : 0);
+            const ta2 = a1 + (a2 - a1) * (i + 1) / STEPS + EPSILON;
+            doc.triangle(cx, cy,
+                cx + r * Math.cos(ta1), cy + r * Math.sin(ta1),
+                cx + r * Math.cos(ta2), cy + r * Math.sin(ta2), 'F');
+        }
+    }
+
+    let angle = -Math.PI / 2;
+    const sliceAngles = [];
+    topProcs.forEach(([, count], i) => {
+        const slice = (count / totalRoots) * 2 * Math.PI;
+        drawSlice(doc, cx, cy, r, angle, angle + slice, PIE_COLORS[i % PIE_COLORS.length]);
+        sliceAngles.push({ mid: angle + slice / 2, slice });
+        angle += slice;
+    });
+
+    // Clean outer ring
+    doc.setDrawColor(255, 255, 255); doc.setLineWidth(1.5); doc.circle(cx, cy, r, 'S');
+    doc.setDrawColor(210, 220, 230); doc.setLineWidth(0.4); doc.circle(cx, cy, r + 2, 'S');
+
+    // Leader lines — anti-overlap: sort labels by Y per side (left/right),
+    // then assign positions with a minimum gap to guarantee legibility.
+    const _labelItems = topProcs.map(([name, count], i) => ({
+        name, i,
+        pct: ((count / totalRoots) * 100).toFixed(1),
+        col: PIE_COLORS[i % PIE_COLORS.length],
+        midA: sliceAngles[i].mid,
+        naturalY: cy + (r + 28) * Math.sin(sliceAngles[i].mid),
+        isRight: Math.cos(sliceAngles[i].mid) >= 0,
+    }));
+
+    const _right = _labelItems.filter(it => it.isRight);
+    const _left  = _labelItems.filter(it => !it.isRight);
+
+    function _assignY(items, minGap) {
+        items.sort((a, b) => a.naturalY - b.naturalY);
+        let lastY = -Infinity;
+        items.forEach(it => {
+            it.finalY = Math.max(it.naturalY, lastY + minGap);
+            lastY = it.finalY;
+        });
+    }
+    _assignY(_right, 12);
+    _assignY(_left,  12);
+
+    [..._right, ..._left].forEach(({ name, pct, col, midA, finalY, isRight }) => {
+        const edgeX = cx + (r + 5)  * Math.cos(midA);
+        const edgeY = cy + (r + 5)  * Math.sin(midA);
+        const ancX  = cx + (r + 24) * (isRight ? 1 : -1);
+        const hLen  = 20;
+        const hx2   = ancX + (isRight ? hLen : -hLen);
+
+        doc.setDrawColor(col[0], col[1], col[2]);
+        doc.setLineWidth(0.4);
+        doc.line(edgeX, edgeY, ancX, finalY);   // from pie edge to label anchor
+        doc.line(ancX, finalY, hx2, finalY);     // horizontal callout
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+        doc.setTextColor(col[0], col[1], col[2]);
+        doc.text(`${name}  ${pct}%`, hx2 + (isRight ? 2 : -2), finalY + 1,
+                 { align: isRight ? 'left' : 'right' });
+    });
+
+    // Legend in 2 columns at the bottom, centred
+    const legendTop = cy + r + 52;
+    const colW2 = contentWidth / 2;
+    doc.setFontSize(8);
+    topProcs.forEach((item, i) => {
+        const [name, count] = item;
+        const pct = ((count / totalRoots) * 100).toFixed(1);
+        const col = PIE_COLORS[i % PIE_COLORS.length];
+        const col2 = i % 2;
+        const row  = Math.floor(i / 2);
+        const lx2  = marginX + col2 * colW2 + 4;
+        const ly2  = legendTop + row * 16;
+        doc.setFillColor(col[0], col[1], col[2]);
+        doc.setDrawColor(col[0], col[1], col[2]);
+        doc.roundedRect(lx2, ly2 - 8, 10, 9, 2, 2, 'F');
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(44, 62, 80);
+        doc.text(`${name}  -  ${pct}%  (${count})`, lx2 + 14, ly2);
+    });
+    // ── Footer on all pages ───────────────────────────────────────────────
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7.5); doc.setTextColor(130, 130, 130);
+        doc.text(
+            `WPTV v2.1  |  Agent ${agentId}  |  ${range}  |  Page ${i} of ${pages}  |  github.com/mym0us3r/WAZUH-Process-Tree-Viewer`,
+            pageWidth / 2, pageHeight - 12, { align: 'center' }
+        );
+    }
+
+    doc.save(`WPTV_${agentId}_${range.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+function collectFullTree(rootId) {
+        // Mapa de filhos completo: visible edges + edges de nós hidden no moreStore
+        const fullChildMap = {};
+        edgesDataset.forEach(e => {
+            if (!fullChildMap[e.from]) fullChildMap[e.from] = [];
+            fullChildMap[e.from].push(e.to);
+        });
+        Object.values(moreStore).forEach(store => {
+            [...store.parentEdges, ...store.internalEdges].forEach(e => {
+                if (!fullChildMap[e.from]) fullChildMap[e.from] = [];
+                if (!fullChildMap[e.from].includes(e.to)) fullChildMap[e.from].push(e.to);
+            });
+        });
+
+        // Lookup de nós completo: visíveis + ocultos no moreStore
+        const fullNodeMap = {};
+        nodesDataset.forEach(n => { fullNodeMap[n.id] = n; });
+        Object.values(moreStore).forEach(store => {
+            store.nodes.forEach(n => { if (!fullNodeMap[n.id]) fullNodeMap[n.id] = n; });
+        });
+
+        const result = [], queue = [{ id: rootId, depth: 0 }], seen = new Set();
+        while (queue.length) {
+            const { id, depth } = queue.shift();
+            if (seen.has(id)) continue; seen.add(id);
+            const n = fullNodeMap[id];
+            if (!n || n.meta?.isNetworkNode || n.meta?.isMoreNode) continue;
+            result.push({ id, depth, node: n });
+            (fullChildMap[id] || [])
+                .filter(c => !String(c).startsWith('MORE:'))
+                .forEach(c => queue.push({ id: c, depth: depth + 1 }));
+        }
+        return result;
+    }
+
+
+async function loadTree() {
+    const identityParams = buildIdentityParams();
+    const filter   = document.getElementById('filterInput').value;
+    const eventId  = (document.getElementById('eventIdInput')?.value || '').trim();
+    const container = document.getElementById('mynetwork');
+    const btn = document.getElementById('loadBtn');
+    const statusMsg = document.getElementById('statusMsg');
+
+    document.getElementById('detailPlaceholder').style.display = 'block';
+    document.getElementById('detailTitle').innerText = 'No process selected';
+    document.getElementById('detailTabs').style.display = 'none';
+    document.getElementById('detailBody').style.display = 'none';
+    document.getElementById('detailWarning').style.display = 'none';
+    document.getElementById('discoverLink').style.display = 'none';
+    document.getElementById('detailSysmonProcess').style.display = 'none';
+    document.getElementById('detailImageLoads').style.display = 'none';
+    document.getElementById('detailFileCreates').style.display = 'none';
+    showDetailTab('basic');
+    currentDetailNodeId = null;
+    currentDetailMeta = null;
+    activeLineageRoot = null;
+    activeLineageIds = [];
+    lineageOriginalColors = {};
+
+    if (!identityParams) {
+        statusMsg.style.color = '#f87171';
+        statusMsg.innerText = 'fill in at least one of AGENT ID, HOST or IP';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = 'LOADING...';
+    statusMsg.style.color = '#f6ad55';
+    statusMsg.innerText = 'querying the backend...';
+
+    const fetchStart = performance.now();
+
+    try {
+        const response = await fetch(`/wptv/api/process-tree?${identityParams}&filter=${filter}&${buildRangeParams()}${eventId ? '&event_id=' + encodeURIComponent(eventId) : ''}`);
+        const data = await response.json();
+        const fetchMs = Math.round(performance.now() - fetchStart);
+
+        document.getElementById('statTotal').innerText = data.stats ? data.stats.total : 0;
+        document.getElementById('statTime').innerText = data.stats ? data.stats.last_update : "--:--:--";
+        document.getElementById('agentDisplay').innerText = document.getElementById('agentInput').value || document.getElementById('hostInput').value || document.getElementById('ipInput').value;
+
+        const nodeCount = (data.nodes || []).length;
+        const LEVEL_SEPARATION = 130;
+        const NODE_SPACING = 90;
+        const ANGLE_SPREAD_DEG = 150; // < 180 on purpose: at a full 180 the outermost branches go nearly flat/horizontal
+
+        const positions = computeLRTreeLayout(data.nodes || [], data.edges || []);
+        const nodesForDataset = (data.nodes || []).map((n) => ({
+            ...n,
+            x: positions[n.id] ? positions[n.id].x : 0,
+            y: positions[n.id] ? positions[n.id].y : 0
+        }));
+
+        // Network relation nodes/edges: a new, distinct edge type built from
+        // real correlated data (Sysmon EventID 3), not a cosmetic addition -
+        // one shared node per distinct destination IP (so two processes
+        // talking to the same address converge on the same node, same as
+        // parent-child convergence already does), connected with a dashed
+        // green edge labeled by destination port. Positioned near whichever
+        // process node they belong to since they fall outside the radial
+        // parent-child layout algorithm.
+        const networkNodes = {};
+        const networkEdges = [];
+        nodesForDataset.forEach((n) => {
+            const conns = (n.meta && n.meta.connections) || [];
+            if (!conns.length) return;
+            const seenIpsForNode = new Set();
+            conns.forEach((c) => {
+                const destIp = c.destinationIp;
+                if (!destIp || destIp === 'N/A' || seenIpsForNode.has(destIp)) return;
+                seenIpsForNode.add(destIp);
+                const ipNodeId = `IP_${destIp}`;
+                if (!networkNodes[ipNodeId]) {
+                    const basePos = positions[n.id] || { x: 0, y: 0 };
+                    const offsetIndex = Object.keys(networkNodes).length;
+                    networkNodes[ipNodeId] = {
+                        id: ipNodeId, label: destIp, shape: 'diamond', size: 14,
+                        color: { background: '#3f6b4f', border: '#2a4736' },
+                        font: { color: '#d1fae5', size: 12 },
+                        x: basePos.x + 70, y: basePos.y + 90 + (offsetIndex % 5) * 26,
+                        meta: { observed: false, isNetworkNode: true, ip: destIp }
+                    };
+                    positions[ipNodeId] = { x: networkNodes[ipNodeId].x, y: networkNodes[ipNodeId].y };
+                }
+                networkEdges.push({
+                    from: n.id, to: ipNodeId, dashes: [3, 3],
+                    color: { color: '#4f8f65' }, arrows: 'to',
+                    label: c.destinationPort ? `:${c.destinationPort}` : '',
+                    font: { color: '#4f8f65', size: 9, strokeWidth: 0, align: 'middle' }
+                });
+            });
+        });
+
+        nodesDataset = new vis.DataSet(nodesForDataset.concat(Object.values(networkNodes)));
+        edgesDataset = new vis.DataSet(tagCrossLinkEdges(data.edges || []).concat(networkEdges));
+        recolorRootsAndBranches();
+        // Aplicar estilo tree-view (box) e applyChildrenPagination após render
+        const _treeUpd = [];
+        nodesDataset.forEach((n) => {
+            if (!n.meta || n.meta.isNetworkNode || n.meta.isMoreNode) return;
+            const _name = n.meta.name || (n.label || '').split('\n')[0];
+            const _pid  = n.meta.pid || '';
+            const _icon = n.meta.sysmon_only ? '◈ '
+                        : (n.meta.badgeCounts && n.meta.badgeCounts.alerts > 0) ? '⚡ ' : '';
+            // Fixed colour scheme:
+            // Parent Process (no parent in tree) → permanent RED
+            // Children/grandchildren → GRAY (blue only when selected by click)
+            const _isRoot = !n.meta.observed; // synthetic parent = root
+            const _bg   = _isRoot ? '#b91c1c' : '#4b5563';
+            const _bdr  = _isRoot ? '#7f1d1d' : '#374151';
+            const _user  = n.meta.user  || '';
+            const _host  = n.meta.host  || '';
+            const _title = _isRoot
+                ? 'PARENT PROCESS  -  ' + _name + (_user ? '  -  ' + _user : '') + (_host ? '  -  ' + _host : '')
+                : undefined;
+            _treeUpd.push({
+                id: n.id, shape: 'box',
+                label: _icon + _name + '\n(PID: ' + _pid + ')',
+                color: { background: _bg, border: _bdr },
+                font: { color: '#f1f5f9', size: 12, face: 'Arial' },
+                borderWidth: 2, shadow: false,
+                widthConstraint: { maximum: 280 },
+                margin: { top: 6, bottom: 6, left: 10, right: 10 },
+                ..._title ? { title: _title } : {},
+            });
+        });
+        if (_treeUpd.length) nodesDataset.update(_treeUpd);
+        // applyChildrenPagination() called AFTER network is created (requires network.getPosition)
+
+        const options = {
+            nodes: {
+                shape: 'box',
+                font: { color: '#f1f5f9', size: 12, face: 'Arial' },
+                borderWidth: 2,
+                shadow: false,
+                widthConstraint: { maximum: 280 },
+                margin: { top: 6, bottom: 6, left: 10, right: 10 }
+            },
+            edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+                color: { color: '#475569' },
+                smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.3 },
+                // Time delta labels on edges (e.g. "622ms", "4s") - global font
+                // style only; individual edges carry their own label in the data
+                font: { color: '#6b7280', size: 10, strokeWidth: 2, strokeColor: '#1a202c', align: 'middle' }
+            },
+            physics: false,
+            interaction: {
+                hover: true,
+                dragNodes: true,
+                dragView: true,
+                zoomView: true,
+                multiselect: false,
+                selectable: true,
+                navigationButtons: false,
+                keyboard: false
+            }
+        };
+
+        if (network) network.destroy();
+        network = new vis.Network(container, { nodes: nodesDataset, edges: edgesDataset }, options);
+
+        // Center the graph immediately using vis-network's built-in fit()
+        // which accounts for all node positions and sizes. The old approach
+        // (zoomToFitPositions + setTimeout) was unreliable with 'circle' shape
+        // nodes because their bounding boxes differ from 'dot' nodes, causing
+        // the graph to land in the bottom-left corner.
+        network.once('afterDrawing', () => {
+            network.fit({ animation: false });
+        });
+
+        network.on("dragStart", handleDragStart);
+        network.on("dragging", handleDragging);
+        network.on("dragEnd", handleDragEnd);
+        network.on("click", handleNodeClick);
+        network.on("doubleClick", handleNodeDoubleClick);
+        network.on("oncontext", handleNodeRightClick);
+        document.getElementById('mynetwork').addEventListener('contextmenu', e => e.preventDefault());
+
+        recolorRootsAndBranches();
+        reapplyLabels();
+        // MORE pagination: called here because network already exists and getPosition works
+        applyChildrenPagination();
+
+        statusMsg.style.color = '#9ca3af';
+        if (nodeCount === 0) {
+            const rawTotal = data.stats?.total_raw || 0;
+            const activeFilter = document.getElementById('filterInput')?.value?.trim();
+            const activeEventId = document.getElementById('eventIdInput')?.value?.trim();
+            if (rawTotal > 0 && (activeFilter || activeEventId)) {
+                const which = activeFilter ? `process filter '${activeFilter}'` : `EventID '${activeEventId}'`;
+                statusMsg.style.color = '#f59e0b';
+                statusMsg.innerText = `No processes matched ${which} in this time window. Clear the filter or try a wider range.`;
+            } else {
+                statusMsg.innerText = `Loaded in ${fetchMs}ms (0 processes found) - no EventID 4688 events in the selected time window. Try a wider range.`;
+            }
+        } else {
+            statusMsg.innerText = `Loaded in ${fetchMs}ms (${nodeCount} nodes)`;
+        }
+    } catch (e) {
+        console.error('WPTV loadTree error:', e);
+        statusMsg.style.color = '#f87171';
+        // Show the actual JS error message so it's visible without opening DevTools
+        statusMsg.innerText = `error: ${e && e.message ? e.message : String(e)} (open console for full traceback)`;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'ANALYZE';
+    }
+}
+
+function getDescendantsWithDepth(nodeId) {
+    // like getDescendants, but also tracks BFS depth from the dragged node -
+    // depth is what lets each descendant lag by a different amount, which is
+    // what turns a rigid lockstep move into a wave/whip motion
+    const result = [];
+    const seen = new Set([nodeId]);
+    let queue = [{ id: nodeId, depth: 0 }];
+    while (queue.length) {
+        const { id: current, depth } = queue.shift();
+        const outgoing = edgesDataset.get({ filter: (e) => e.from === current });
+        outgoing.forEach((e) => {
+            if (!seen.has(e.to)) {
+                seen.add(e.to);
+                result.push({ id: e.to, depth: depth + 1 });
+                queue.push({ id: e.to, depth: depth + 1 });
+            }
+        });
+    }
+    return result;
+}
+
+// Wave-drag system: instead of moving every descendant by the exact same
+// delta as the dragged node every frame (rigid lockstep - felt robotic),
+// each descendant eases toward its target position at its own speed, and
+// that speed decreases with distance from the dragged node in the tree.
+// Direct children catch up almost immediately; deeper descendants lag more,
+// producing the cascading whip/wave motion. This runs as our own animation
+// loop (not vis-network's physics engine, which is what previously caused
+// freezing on large graphs) and keeps animating for a short settle period
+// after the mouse is released, until every node has caught up to its target.
+let waveDragState = null;
+let waveAnimHandle = null;
+
+
+// ── Subtree drag: dragging a node moves its entire subtree ─────────────────
+// Rule: only the ROOT node (Parent Process, no incoming edge) drags
+// the entire subtree. Child nodes are moved freely and independently,
+// allowing the analyst to reposition individual processes.
+let subtreeDragState = null;
+function getAllSubtreeIds(rootId) {
+    const cm={};
+    edgesDataset.forEach(e=>{if(!cm[e.from]) cm[e.from]=[];cm[e.from].push(e.to);});
+    const v=new Set(),q=[rootId];
+    while(q.length){const n=q.shift();(cm[n]||[]).forEach(c=>{if(!v.has(c)){v.add(c);q.push(c);}});}
+    return [...v];
+}
+function handleDragging(params) {
+    if(!subtreeDragState||!params.nodes.length) return;
+    if(params.nodes[0]!==subtreeDragState.draggedId) return;
+    const cur=network.getPosition(subtreeDragState.draggedId);
+    if(!cur) return;
+    const upd=Object.entries(subtreeDragState.offsets).map(([id,{dx,dy}])=>({id,x:cur.x+dx,y:cur.y+dy}));
+    if(upd.length) nodesDataset.update(upd);
+}
+function handleDragStart(params) {
+    if(!params.nodes.length) return;
+    const did=params.nodes[0];
+    nodesDataset.update({id:did,fixed:{x:false,y:false}});
+
+    // Check if the node has an incoming edge (is a child) or not (is a root)
+    const isChild = edgesDataset.get({ filter: e => e.to === did }).length > 0;
+    if (isChild) {
+        // Child node: drag only this node freely, without moving descendants
+        subtreeDragState = { draggedId: did, offsets: {} };
+        return;
+    }
+
+    // Root (Parent Process):
+    // SOLO mode active (toggled by double-click) → move only the parent
+    if (rootDragSolo[did]) {
+        subtreeDragState = { draggedId: did, offsets: {} };
+        return;
+    }
+
+    // Normal mode: drag moves the entire subtree
+    const descs=getAllSubtreeIds(did);
+    if(!descs.length){subtreeDragState={draggedId:did,offsets:{}};return;}
+    const allIds=[did,...descs];
+    const pos=network.getPositions(allIds);
+    const anc=pos[did];
+    if(!anc){subtreeDragState={draggedId:did,offsets:{}};return;}
+    const offsets={};
+    descs.forEach(id=>{const p=pos[id];if(p) offsets[id]={dx:p.x-anc.x,dy:p.y-anc.y};});
+    subtreeDragState={draggedId:did,offsets};
+}
+
+function startWaveAnimation() {
+    if (waveAnimHandle) return; // already running
+
+    const step = () => {
+        if (!waveDragState) { waveAnimHandle = null; return; }
+
+        const draggedPos = network.getPositions([waveDragState.draggedId])[waveDragState.draggedId];
+        if (!draggedPos) { waveAnimHandle = null; return; }
+
+        const ids = Object.keys(waveDragState.offsets);
+        const updates = [];
+        let stillMoving = false;
+
+        ids.forEach((id) => {
+            const { dx, dy, ease } = waveDragState.offsets[id];
+            const targetX = draggedPos.x + dx;
+            const targetY = draggedPos.y + dy;
+            const current = network.getPositions([id])[id];
+            if (!current) return;
+
+            const nx = current.x + (targetX - current.x) * ease;
+            const ny = current.y + (targetY - current.y) * ease;
+
+            if (Math.abs(targetX - nx) > 0.5 || Math.abs(targetY - ny) > 0.5) stillMoving = true;
+
+            updates.push({ id, x: nx, y: ny });
+        });
+
+        if (updates.length) nodesDataset.update(updates);
+
+        if (waveDragState.dragEnded && !stillMoving) {
+            finalizeWaveDrag();
+            waveAnimHandle = null;
+            return;
+        }
+
+        waveAnimHandle = requestAnimationFrame(step);
+    };
+
+    waveAnimHandle = requestAnimationFrame(step);
+}
+
+function finalizeWaveDrag() {
+    if (!waveDragState) return;
+    nodesDataset.update({ id: waveDragState.draggedId, fixed: { x: true, y: true } });
+    Object.keys(waveDragState.offsets).forEach((id) => {
+        if (nodesDataset.get(id)) nodesDataset.update({ id, fixed: { x: true, y: true } });
+    });
+    waveDragState = null;
+}
+
+function handleDragEnd(params) {
+    if (waveDragState) {
+        waveDragState.dragEnded = true;
+        return; // the animation loop finishes settling the wave, then fixes everyone in place
+    }
+    if (params.nodes.length) {
+        nodesDataset.update({ id: params.nodes[0], fixed: { x: true, y: true } });
+    }
+}
+
+async function handleNodeClick(params) {
+    // Blue highlight on clicked node, gray on others, red on parents (FIXED)
+    const clickedId = params.nodes.length ? params.nodes[0] : null;
+    const hasInc = new Set();
+    edgesDataset.forEach(e => hasInc.add(e.to));
+    const colorUpdates = [];
+    nodesDataset.forEach((n) => {
+        if (n.meta && (n.meta.isNetworkNode || n.meta.isMoreNode)) return;
+        const isRoot = !hasInc.has(n.id);
+        if (isRoot) {
+            colorUpdates.push({ id: n.id, color: { background: '#b91c1c', border: '#7f1d1d' } });
+        } else if (n.id === clickedId) {
+            colorUpdates.push({ id: n.id, color: { background: '#1d4ed8', border: '#1e40af' } });
+        } else {
+            colorUpdates.push({ id: n.id, color: { background: '#4b5563', border: '#374151' } });
+        }
+    });
+    if (colorUpdates.length) nodesDataset.update(colorUpdates);
+    // HIGHLIGHT_CLICK
+    // Background click (empty space): clear any active lineage and restore
+    // ALL parent processes to yellow + children to gray
+    if (!params.nodes.length) {
+        revertActiveLineage();
+        recolorRootsAndBranches();
+        reapplyLabels();
+        return;
+    }
+
+    const nodeId = params.nodes[0];
+    const clickedNode = nodesDataset.get(nodeId);
+    if (clickedNode && clickedNode.meta && clickedNode.meta.isNetworkNode) {
+        showNetworkNodeInfo(nodeId, clickedNode);
+        return;
+    }
+
+    showDetailPanel(nodeId);
+
+    const pid = nodeId.replace('P', '');
+    const identityParams = buildIdentityParams();
+    if (!identityParams) return;
+
+    try {
+        const response = await fetch(`/wptv/api/process-tree/expand?${identityParams}&pid=${pid}&${buildRangeParams()}`);
+        const data = await response.json();
+
+        if (!data.nodes || !data.nodes.length) return;
+
+        const anchorPos = network.getPositions([nodeId])[nodeId] || { x: 0, y: 0 };
+        const LEVEL_SEPARATION = 130;
+        const CHILD_ANGLE_SPREAD_DEG = 100;
+
+        const newParent = data.nodes.find((n) => n.id !== nodeId && data.edges.some((e) => e.from === n.id && e.to === nodeId));
+        const newChildren = data.nodes.filter((n) => n.id !== nodeId && data.edges.some((e) => e.from === nodeId && e.to === n.id));
+        const childAngleSpreadRad = (CHILD_ANGLE_SPREAD_DEG * Math.PI) / 180;
+
+        data.nodes.forEach((n) => {
+            const alreadyExists = nodesDataset.get(n.id);
+            if (alreadyExists) {
+                nodesDataset.update(n);
+                return;
+            }
+
+            let pos = { x: anchorPos.x, y: anchorPos.y };
+            if (newParent && n.id === newParent.id) {
+                pos = { x: anchorPos.x, y: anchorPos.y - LEVEL_SEPARATION };
+            } else {
+                const idx = newChildren.findIndex((c) => c.id === n.id);
+                if (idx !== -1) {
+                    const angle = newChildren.length <= 1
+                        ? 0
+                        : (idx / (newChildren.length - 1)) * childAngleSpreadRad - (childAngleSpreadRad / 2);
+                    const screenAngle = angle + Math.PI / 2;
+                    pos = {
+                        x: anchorPos.x + LEVEL_SEPARATION * Math.cos(screenAngle),
+                        y: anchorPos.y + LEVEL_SEPARATION * Math.sin(screenAngle)
+                    };
+                }
+            }
+
+            nodesDataset.add({ ...n, x: pos.x, y: pos.y });
+        });
+
+        const existingChildIds = new Set(
+            edgesDataset.get().map((e) => e.to)
+        );
+        tagCrossLinkEdges(data.edges, existingChildIds).forEach((e) => {
+            const existing = edgesDataset.get({
+                filter: (item) => item.from === e.from && item.to === e.to
+            });
+            if (!existing.length) edgesDataset.add(e);
+        });
+
+        document.getElementById('statTotal').innerText = nodesDataset.length;
+        recolorRootsAndBranches();
+        // Re-apply "#N\nname\n(pid)" labels after expand - the backend returns
+        // plain labels without the order prefix, so nodesDataset.update(n)
+        // above would erase the "#N" from any node that was already in the dataset
+        reapplyLabels();
+    } catch (e) { console.error(e); }
+}
+
+// ── reapplyLabels ─────────────────────────────────────────────────────────
+// After ANY nodesDataset.update() that comes from the backend (expand, color
+// reset, etc.) the node label may be replaced with the plain "name\n(pid)"
+// string from the backend - without the "#N\n" prefix that was assigned by
+// the per-component BFS in build_tree. This function re-applies the "#N"
+// prefix to every node whose meta.order is set, ensuring labels always
+// show the creation-order number regardless of what triggered the update.
+function reapplyLabels() {
+    // Normalise the label of EVERY process node to the canonical format:
+    //   - nodes WITH an order number  → "${order}\n${name}"
+    //   - nodes WITHOUT an order (added via expand, not in BFS) → "${name}"
+    // In both cases the PID is NEVER part of the label - it lives only in
+    // the side panel (Basic Properties). This runs after every operation
+    // that touches nodesDataset (loadTree, expand, lineage clear) to
+    // guarantee labels never drift back to the old "name\n(0xPID)" format.
+    const updates = [];
+    nodesDataset.forEach((n) => {
+        if (!n.meta || n.meta.isNetworkNode) return;
+        const name = n.meta.name;
+        if (!name) return;
+        const expected = n.meta.order != null
+            ? `${n.meta.order}\n${name}`
+            : name;
+        if (n.label !== expected) {
+            updates.push({ id: n.id, label: expected });
+        }
+    });
+    if (updates.length) nodesDataset.update(updates);
+}
+
+function revertActiveLineage() {
+    if (!activeLineageIds.length) return;
+    const updates = activeLineageIds
+        .filter((id) => nodesDataset.get(id) && lineageOriginalColors.hasOwnProperty(id))
+        .map((id) => ({ id, color: lineageOriginalColors[id] }));
+    if (updates.length) nodesDataset.update(updates);
+    activeLineageIds = [];
+    lineageOriginalColors = {};
+    activeLineageRoot = null;
+    // Restore labels that may have been changed while lineage was active
+    reapplyLabels();
+}
+
+// rootDragSolo: when true, dragging the Parent Process moves ONLY itself (not the tree)
+let rootDragSolo = {};  // { rootId: bool }
+
+function handleNodeDoubleClick(params) {
+    if (!params.nodes.length) return;
+    const nodeId = params.nodes[0];
+    const dblNode = nodesDataset.get(nodeId);
+    if (!dblNode) return;
+    if (dblNode.meta && dblNode.meta.isMoreNode) { toggleMoreNode(nodeId); return; }
+    if (dblNode.meta && dblNode.meta.isNetworkNode) return;
+
+    // Check if this is a root node (Parent Process)
+    const hasInc = new Set();
+    edgesDataset.forEach(e => hasInc.add(e.to));
+    const isRoot = !hasInc.has(nodeId);
+
+    if (isRoot) {
+        // Toggle: solo drag (parent only) ↔ tree drag (entire subtree)
+        rootDragSolo[nodeId] = !rootDragSolo[nodeId];
+        const solo = rootDragSolo[nodeId];
+        // Visual indicator: white border when in solo mode
+        nodesDataset.update({
+            id: nodeId,
+            color: { background: '#b91c1c', border: solo ? '#ffffff' : '#7f1d1d' },
+            borderWidth: solo ? 4 : 2,
+            title: solo ? 'SOLO MODE  -  double-click to return to tree mode' : undefined
+        });
+        return;
+    }
+
+    // Child/grandchild: original behaviour (mark lineage)
+    const wasSameRoot = activeLineageRoot === nodeId;
+    revertActiveLineage();
+    if (wasSameRoot) return;
+    const lineageIds = [nodeId, ...getDescendants(nodeId)];
+    const updates = [];
+    lineageIds.forEach((id) => {
+        const node = nodesDataset.get(id);
+        if (!node) return;
+        lineageOriginalColors[id] = node.color;
+        updates.push({ id, color: LINEAGE_COLOR });
+    });
+    nodesDataset.update(updates);
+    activeLineageIds  = lineageIds;
+    activeLineageRoot = nodeId;
+    reapplyLabels();
+}
+
+loadTree();
+</script>
+</body>
+</html>

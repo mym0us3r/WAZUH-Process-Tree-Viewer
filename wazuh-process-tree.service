@@ -1,0 +1,34 @@
+[Unit]
+Description=Wazuh Process Tree Viewer (WPTV)
+After=network.target
+
+[Service]
+Type=simple
+User=wazuh-dashboard
+WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
+
+# Wazuh Indexer credentials (WPTV_INDEXER_*) - see wptv.env.example.
+# Mode 600, owned by wazuh-dashboard, never committed to git.
+EnvironmentFile=/etc/wazuh-process-tree/wptv.env
+
+StandardOutput=append:/var/log/wazuh-process-tree/wptv.log
+StandardError=append:/var/log/wazuh-process-tree/wptv.log
+
+# Production WSGI server (gunicorn) with TLS.
+# Certs reuse the Wazuh Dashboard certificate so the browser trusts HTTPS
+# on port 5000 without an extra CA import - required when WPTV is embedded
+# as an iframe inside the OSD plugin (mixed-content block otherwise).
+ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn \
+  --workers 4 \
+  --bind 0.0.0.0:5000 \
+  --timeout 120 \
+  --certfile /etc/wazuh-dashboard/certs/wazuh-dashboard.pem \
+  --keyfile  /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem \
+  server:app
+
+# Delay before restart to avoid systemd start-limit-hit on rapid crash loops.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

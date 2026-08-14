@@ -1,0 +1,9 @@
+{
+  "id": "wptv",
+  "version": "2.1.0",
+  "opensearchDashboardsVersion": "2.19.4",
+  "server": false,
+  "ui": true,
+  "requiredPlugins": [],
+  "optionalPlugins": []
+}
