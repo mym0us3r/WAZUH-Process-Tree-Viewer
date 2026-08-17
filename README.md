@@ -11,7 +11,7 @@ WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry i
 ---
 
 > **Version:** 2.1
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-08-17
 > **Wazuh Compatibility:** 4.14.4 / 4.14.7
 > **OpenSearch Dashboards:** 2.19.4 / 2.19.5
 > **Companion Sysmon ruleset (recommended):** [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs)
@@ -118,6 +118,7 @@ Beyond Sysmon, WPTV surfaces critical Windows Security and System Event IDs when
 | 4648 | Explicit credential logon | Pass-the-Hash / RunAs |
 | 4663 | Object access attempt | Data exfiltration |
 | 4672 | Special privileges assigned | Privilege escalation |
+| 4689 | Process terminated | Process activity |
 | 4698 | Scheduled task created | T1053 persistence |
 | 4702 | Scheduled task updated | Persistence evasion |
 | 4719 | Audit policy changed | Defense evasion |
@@ -132,7 +133,6 @@ Beyond Sysmon, WPTV surfaces critical Windows Security and System Event IDs when
 | 4776 | NTLM credential validation | Pass-the-Hash / NTLM relay |
 | 4964 | Special groups assigned | Privileged group monitoring |
 | 7045 | New service installed | T1543 persistence |
-| 4689 | Process terminated | Process activity |
 
 ## Changelog
 
