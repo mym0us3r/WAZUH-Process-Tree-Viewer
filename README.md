@@ -598,7 +598,7 @@ A special thank you to the entire **Wazuh Community** for their ongoing support 
 
 I would also like to express my sincere gratitude to the Wazuh Ambassador Program team:
 
-Katia Bukovac, Raquel Presas Salguero, Carolina Landa, and Francis Jeremiah - for their encouragement, trust, review, and constant support during this project.
+Katia Bukovac, Raquel Presas Salguero, Carolina Landa, and Obinna Uchubilo - for their encouragement, trust, review, and constant support during this project.
 
 Special thanks to **Awwal Ishiaku** for his support throughout the development process, and to William Weber for testing the project and providing valuable feedback.
 
