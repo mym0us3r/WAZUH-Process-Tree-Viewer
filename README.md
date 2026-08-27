@@ -11,7 +11,7 @@ WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry i
 ---
 
 > **Version:** 2.1
-> **Last Updated:** 2026-08-17
+> **Last Updated:** 2026-08-27
 > **Wazuh Compatibility:** 4.14.4 / 4.14.7
 > **OpenSearch Dashboards:** 2.19.4 / 2.19.5
 > **Companion Sysmon ruleset (recommended):** [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs)
@@ -30,6 +30,8 @@ The WPTV backend and data-processing architecture remain unchanged. When deployi
 
 ![WPTV Main Dashboard](img/wptv2.png)
 
+---
+
 ## Deployment Modes
 
 WPTV can be reached in two ways, both served through the same unified Nginx reverse proxy on port 443:
@@ -41,6 +43,8 @@ Both paths resolve to the same Gunicorn backend through the Nginx `/wptv/` locat
 
 > **Historical note:** in the early stage of the project (Wazuh 4.14.4, roughly seven months before v2.1), Gunicorn bound directly to `0.0.0.0:5000` and was reachable externally on that port without Nginx in front of it. That direct-port model has been retired. Since v2.1, Gunicorn binds to `127.0.0.1:5000` (loopback only, see the systemd unit below) and Nginx is the sole external entry point for both standalone and OSD-integrated access. Port 5000 is not reachable from outside the host, and any bookmark or script still pointing at `https://<host>:5000` needs to be updated to `https://<host>/wptv/`.
 
+---
+
 ## Project Architecture & File Structure
 
 <p align="center">
@@ -48,7 +52,6 @@ Both paths resolve to the same Gunicorn backend through the Nginx `/wptv/` locat
 </p>
 
 > **Note:** Nginx centralizes all external HTTPS traffic on port 443 with path-based routing for both standalone and OSD-integrated access. The iframe uses the same HTTPS origin as standalone access, eliminating mixed-content issues and secondary certificates.
-
 
 WPTV v2.1 is deployed as a native OpenSearch Dashboards UI Plugin, accessible directly from the Wazuh Dashboard sidebar under Forensics.
 
@@ -62,7 +65,7 @@ WPTV consists of two independent components:
 - `requirements.txt`: Python dependencies
 - `wptv_example.env`: Environment variables template (copy to `wptv.env`)
 - `wazuh-process-tree.service`: SystemD unit template
-- `public/index.html`: Frontend - vis-network.js, LR layout, PDF export, dark mode
+- `public/index.html`: Frontend - vis-network.js, LR layout, PDF export, dark/light skin toggle, process category icons
 - `public/favicon.svg` / `public/favicon.ico`: Browser tab icon
 
 **WPTV Dashboard Plugin** (`wptv_plugin/`)
@@ -71,7 +74,61 @@ WPTV consists of two independent components:
 - `install.sh`: Plugin installation script (copy, permissions, restart)
 - `target/public/wptv.plugin.js`: Pre-built bundle (~2.5KB, no compilation required)
 - `target/public/wptv.plugin.js.gz`: Compressed bundle
-  
+
+---
+
+## UI Features
+
+### Skin Toggle (Dark / Light)
+
+WPTV ships with two visual skins switchable via the moon/sun icon in the top-right corner of the navbar. The preference is persisted in `localStorage`.
+
+- **Dark skin** (`#111827` navbar and panel, white canvas with dark border) - default
+- **Light skin** (`#00a0d1` navbar and panel, white canvas) - toggle to switch
+
+Both skins share a white graph canvas. The ANALYZE button matches the navbar color of the active skin.
+
+### Process Category Icons
+
+Every process node renders a category-specific icon instead of a generic placeholder. The icon is drawn inside the node chip using the HTML5 Canvas API - no external image assets required.
+
+| Icon | Category | Example processes |
+|---|---|---|
+| `>_` Shell prompt | Shell / terminal | `cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe` |
+| Key | Registry | `reg.exe`, `regsvr32.exe`, `regedit.exe` |
+| 3-D box | Installer | `msiexec.exe`, `setup.exe`, `wusa.exe`, `dism.exe` |
+| Person | Identity / session | `winlogon.exe`, `userinit.exe`, `lsass.exe`, `whoami.exe` |
+| Clock | Time | `w32tm.exe` |
+| Calendar | Scheduler | `schtasks.exe`, `taskhostw.exe` |
+| Gear | Service / background | `svchost.exe`, `services.exe`, `spoolsv.exe` |
+| Globe | Network | `ping.exe`, `tracert.exe`, `nslookup.exe`, `arp.exe`, `net.exe` |
+| Window frame | Console / UI | `conhost.exe`, `explorer.exe`, `msedge.exe` |
+| Monitor | RMM | `screenconnect.*`, `anydesk.*`, `teamviewer.*` |
+| App window | Unknown / generic | Any process not in the map |
+
+The category map covers approximately 70 common Windows processes. Unrecognized processes display a generic application-window icon so every node is visually consistent.
+
+### Parent Process Node
+
+When the direct parent of a displayed tree was not observed within the queried time window, WPTV renders it as a circular node carrying the WPTV favicon icon. This node always shows:
+
+- **Label (permanent, below the circle):**
+  ```
+  Parent Process - PID 0x2494
+  explorer.exe
+  ```
+- **Tooltip (on hover) - only fields available:**
+  ```
+  User: kr
+  Host: LABDESK
+  Time: 2026-08-27 04:22:05
+  Parent Process: explorer.exe
+  ```
+
+Fields with no data are omitted. The time is displayed without sub-second precision. `RULE ID` is never shown in the tooltip; it is already visible in the Basic Properties tab of the right panel.
+
+---
+
 ## Companion Sysmon Ruleset
 
 WPTV correlates Sysmon data from two sources: `wazuh-alerts-*` (Indexer, fast path) for events that triggered a Wazuh rule, and `wazuh-archives-*` (or filesystem archives) for all events regardless of rule - including Sysmon telemetry captured but never escalated.
@@ -83,7 +140,7 @@ This project was developed and validated against [Native Sysmon Rewrite by m0us3
 - A missing `-enc` abbreviation in the PowerShell Base64-encoded-command detection (rules `92057`/`92059`/`92071`), which prevented the most common real-world invocation from ever escalating past a low-severity generic rule.
 - A missing end-of-string anchor in rule `92213` ("Executable file dropped in folder commonly used by malware"), which caused legitimate `.json` files to be misclassified as executables.
 
-### Sysmon EventID coverage map
+### Sysmon EventID Coverage Map
 
 | EventID | What it is | Behavioral rules exist? | Correlated by WPTV? |
 |---|---|---|---|
@@ -104,7 +161,7 @@ This project was developed and validated against [Native Sysmon Rewrite by m0us3
 | 29 | File Executable Detected | Yes - new PE drop | **Yes** - Alerts tab (rule + MITRE) |
 | 2, 4, 5 | FileCreateTime, service state, process terminate | Group-tagged only, no behavioral rules | No |
 
-### Windows Audit Event ID coverage
+### Windows Audit Event ID Coverage
 
 Beyond Sysmon, WPTV surfaces critical Windows Security and System Event IDs when indexed by Wazuh, handled transparently via `_normalize_pid()` to bridge hexadecimal and decimal PID formats.
 
@@ -134,9 +191,13 @@ Beyond Sysmon, WPTV surfaces critical Windows Security and System Event IDs when
 | 4964 | Special groups assigned | Privileged group monitoring |
 | 7045 | New service installed | T1543 persistence |
 
+---
+
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full version history.
+
+---
 
 ## Installation & Setup
 
@@ -144,25 +205,25 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history.
 
 Clone the repository into the current directory:
 
-```
+```bash
 git clone https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer.git
 ```
 
 Enter the cloned repository:
 
-```
+```bash
 cd WAZUH-Process-Tree-Viewer
 ```
 
 Create the WPTV backend directory:
 
-```
+```bash
 mkdir -p /usr/share/wazuh-dashboard/plugins/process_tree_api/public
 ```
 
 Copy the backend files:
 
-```
+```bash
 cp process_tree_api/server.py \
    process_tree_api/logic.py \
    process_tree_api/requirements.txt \
@@ -170,12 +231,11 @@ cp process_tree_api/server.py \
 
 cp process_tree_api/wptv_example.env \
    /etc/wazuh-process-tree/wptv.env
-
 ```
 
 Copy the frontend files:
 
-```
+```bash
 cp process_tree_api/public/index.html \
    process_tree_api/public/favicon.ico \
    process_tree_api/public/favicon.svg \
@@ -188,23 +248,22 @@ After a complete deployment:
 /usr/share/wazuh-dashboard/plugins/process_tree_api/
 ├── logic.py
 ├── public
-│   ├── favicon.ico
-│   ├── favicon.svg
-│   └── index.html
+│   ├── favicon.ico
+│   ├── favicon.svg
+│   └── index.html
 ├── requirements.txt
 ├── server.py
 └── venv/
     └── bin/
         ├── gunicorn
         └── python3
-
 ```
 
 ### 2. Virtual Environment
 
 Isolate dependencies to prevent system conflicts:
 
-```
+```bash
 cd /usr/share/wazuh-dashboard/plugins/process_tree_api
 
 python3 -m venv venv
@@ -217,14 +276,14 @@ deactivate
 
 The service must be executed by the dashboard user:
 
-```
+```bash
 chown -R wazuh-dashboard:wazuh-dashboard /usr/share/wazuh-dashboard/plugins/process_tree_api
 chmod -R 755 /usr/share/wazuh-dashboard/plugins/process_tree_api
 ```
 
 ### 4. Log Directory
 
-```
+```bash
 mkdir -p /var/log/wazuh-process-tree
 chown wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
 ```
@@ -235,7 +294,7 @@ WPTV queries the Wazuh Indexer directly as its primary data source. Create a ded
 
 Create the role:
 
-```
+```bash
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -258,7 +317,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/roles/wptv_role" 
 
 Create the user:
 
-```
+```bash
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/internalusers/wptv_svc" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -271,7 +330,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/internalusers/wpt
 
 Map the role to the user:
 
-```
+```bash
 curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/rolesmapping/wptv_role" \
   -H "Content-Type: application/json" \
   -u "admin:<admin_password>" \
@@ -282,7 +341,7 @@ curl -sk -X PUT "https://127.0.0.1:9200/_plugins/_security/api/rolesmapping/wptv
 
 Then configure the credentials:
 
-```
+```bash
 mkdir -p /etc/wazuh-process-tree/certs
 
 cp /etc/wazuh-indexer/certs/root-ca.pem \
@@ -290,17 +349,20 @@ cp /etc/wazuh-indexer/certs/root-ca.pem \
 
 cp /usr/share/wazuh-dashboard/plugins/process_tree_api/wptv_example.env \
    /etc/wazuh-process-tree/wptv.env
-
-/etc/wazuh-process-tree/
-├── certs
-│   └── root-ca.pem
-└── wptv.env
-
-nano /etc/wazuh-process-tree/wptv.env
-
 ```
 
-`wptv.env (wptv_example.env)` template:
+```
+/etc/wazuh-process-tree/
+├── certs
+│   └── root-ca.pem
+└── wptv.env
+```
+
+```bash
+nano /etc/wazuh-process-tree/wptv.env
+```
+
+`wptv.env` template:
 
 ```
 WPTV_INDEXER_URL=https://127.0.0.1:9200
@@ -312,14 +374,13 @@ WPTV_ARCHIVE_INDEX=wazuh-archives-*
 
 chown wazuh-dashboard:wazuh-dashboard /etc/wazuh-process-tree/wptv.env
 chmod 600 /etc/wazuh-process-tree/wptv.env
-
 ```
 
 ### 6. Nginx Reverse Proxy (Unified Configuration)
 
-**Check whether Nginx is installed:**
+Check whether Nginx is installed:
 
-```
+```bash
 if ! command -v nginx >/dev/null 2>&1; then
     echo "Nginx is not installed. Installing..."
     apt update
@@ -331,7 +392,7 @@ fi
 
 Nginx terminates external HTTPS on port 443 and routes paths uniformly:
 
-```
+```bash
 cat > /etc/nginx/sites-available/wptv << 'EOF'
 server {
     listen 443 ssl;
@@ -368,14 +429,14 @@ systemctl reload nginx
 
 Configure the Wazuh Dashboard to bind strictly to loopback (`127.0.0.1:5601`) in `/etc/wazuh-dashboard/opensearch_dashboards.yml`:
 
-```
+```yaml
 server.port: 5601
 server.host: "127.0.0.1"
 ```
 
 Verify that the dashboard is listening:
 
-```
+```bash
 sudo ss -ltnp | grep ':5601'
 ```
 
@@ -383,20 +444,18 @@ sudo ss -ltnp | grep ':5601'
 
 Before installing the plugin, verify the installed Wazuh Dashboard package version:
 
-```
+```bash
 cat /usr/share/wazuh-dashboard/package.json | grep -i '"version"'
+```
 
 Expected output:
-"version": "2.19.4",
-    "version": "4.14.4",
-
-Where:
-2.19.4 - OpenSearch Dashboards version
-4.14.4 - Wazuh version
 
 ```
+"version": "2.19.4",
+    "version": "4.14.4",
+```
 
-The installed package version identifies the Wazuh Dashboard release in use without directly executing Wazuh Dashboard binaries.
+Where `2.19.4` is the OpenSearch Dashboards version and `4.14.4` is the Wazuh version.
 
 The corresponding OpenSearch Dashboards versions for the validated Wazuh releases are:
 
@@ -407,13 +466,13 @@ The corresponding OpenSearch Dashboards versions for the validated Wazuh release
 
 Verify the plugin manifest:
 
-```
+```bash
 cat wptv_plugin/opensearch_dashboards.json
 ```
 
 For Wazuh 4.14.4:
 
-```
+```json
 {
   "id": "wptv",
   "version": "2.1.0",
@@ -427,7 +486,7 @@ For Wazuh 4.14.4:
 
 For Wazuh 4.14.7:
 
-```
+```json
 {
   "id": "wptv",
   "version": "2.1.0",
@@ -443,7 +502,7 @@ For Wazuh 4.14.7:
 
 Install the plugin:
 
-```
+```bash
 sudo bash wptv_plugin/install.sh
 ```
 
@@ -455,13 +514,13 @@ After the dashboard restarts, the sidebar entry appears under:
 
 If the dashboard fails to start after plugin installation, inspect the service status:
 
-```
+```bash
 sudo systemctl status wazuh-dashboard --no-pager -l
 ```
 
 And the recent dashboard logs:
 
-```
+```bash
 sudo journalctl -u wazuh-dashboard -n 100 --no-pager
 ```
 
@@ -471,19 +530,21 @@ If the logs report an OpenSearch Dashboards compatibility error, verify that `op
 
 Every node's "Open in Wazuh Discover" link is built from a JavaScript constant, `WAZUH_DASHBOARD_BASE_URL`, in the **first lines** of the `<script>` block in `public/index.html`:
 
-```
+```javascript
 const WAZUH_DASHBOARD_BASE_URL = `https://${window.location.hostname}`;
 ```
+
+---
 
 ## Service Management (SystemD)
 
 Create the service file:
 
-```
+```bash
 sudo nano /etc/systemd/system/wazuh-process-tree.service
 ```
 
-```
+```ini
 [Unit]
 Description=Wazuh Process Tree Viewer (WPTV)
 After=network.target
@@ -493,16 +554,11 @@ Type=simple
 User=wazuh-dashboard
 WorkingDirectory=/usr/share/wazuh-dashboard/plugins/process_tree_api
 
-# Wazuh Indexer credentials (WPTV_INDEXER_*) - see wptv.env.example.
-# Mode 600, owned by wazuh-dashboard, never committed to git.
 EnvironmentFile=/etc/wazuh-process-tree/wptv.env
 
 StandardOutput=append:/var/log/wazuh-process-tree/wptv.log
 StandardError=append:/var/log/wazuh-process-tree/wptv.log
 
-# Production WSGI server (Gunicorn) with TLS.
-# The WPTV backend reuses the Wazuh Dashboard certificate for
-# the local HTTPS connection from Nginx to Gunicorn.
 ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn \
   --workers 4 \
   --bind 127.0.0.1:5000 \
@@ -511,7 +567,6 @@ ExecStart=/usr/share/wazuh-dashboard/plugins/process_tree_api/venv/bin/gunicorn 
   --keyfile /etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem \
   server:app
 
-# Delay before restart to avoid systemd start-limit-hit on rapid crash loops.
 Restart=always
 RestartSec=5
 
@@ -521,7 +576,7 @@ WantedBy=multi-user.target
 
 ### Service Logging
 
-```
+```bash
 sudo mkdir -p /var/log/wazuh-process-tree
 sudo touch /var/log/wazuh-process-tree/wptv.log
 sudo chown -R wazuh-dashboard:wazuh-dashboard /var/log/wazuh-process-tree
@@ -531,7 +586,7 @@ sudo chmod 640 /var/log/wazuh-process-tree/wptv.log
 
 ### Management Commands
 
-```
+```bash
 sudo systemctl daemon-reload
 sudo systemctl start wazuh-process-tree
 sudo systemctl stop wazuh-process-tree
@@ -540,15 +595,18 @@ sudo systemctl enable wazuh-process-tree
 tail -f /var/log/wazuh-process-tree/wptv.log
 ```
 
+---
+
 ## Usage Guide
 
 > **Important:** WPTV is designed for Windows process telemetry. The selected Wazuh agent must be connected and actively sending Windows Security and/or Sysmon events to Wazuh. Linux agents may appear in the Wazuh environment, but they do not provide the Windows process telemetry required to build WPTV process graphs.
 
-- Access via browser: `https://<YOUR_WAZUH_IP>/app/wptv` (OSD plugin, embedded in the Wazuh Dashboard sidebar) or `https://<YOUR_WAZUH_IP>/wptv/` (standalone, outside the Dashboard shell). Both are served by the same Nginx `/wptv/` location block.
+- Access via browser: `https://<YOUR_WAZUH_IP>/app/wptv` (OSD plugin) or `https://<YOUR_WAZUH_IP>/wptv/` (standalone).
 - Enter **one** of: Agent ID, Host, or IP. Press **Enter** or click **ANALYZE**.
 - Select the **Time Range** - presets from 5 minutes to 30 days, or a custom range.
 - Optionally add a **PROCESS FILTER** by process name.
 - Optionally add an **EventID** filter.
+- Click the **moon / sun icon** in the top-right corner of the navbar to toggle between Dark and Light skins. The preference is saved in the browser.
 
 ### EXPORT PDF
 
@@ -560,37 +618,59 @@ Click **EXPORT PDF** in the toolbar to generate a forensic report (Full Report o
 - **Double-click on a child node:** Marks subtree lineage.
 - **Double-click on a MORE node:** Expands/collapses hidden children.
 - **Double-click on Parent Process:** Toggles SOLO drag mode.
-- **Right-click on any node:** Isolate tree view (`Filter only: <root name>`).
+- **Right-click on any node:** Isolate tree view.
+
+---
 
 ## Screenshots
 
+### Dark Skin - Default
+
+![WPTV Dark Skin](img/wptv_dark_blue.png)
+
+### Light Skin - Toggle
+
+![WPTV Light Skin](img/wptv_clear_blue.png)
+
 ### EID 17/18 - Named Pipe C2 Detection (CRITICAL)
-PowerShell creating known Cobalt Strike named pipes (`\\MSSE-1`, `\\postex_`, `\\status_`) detected via Sysmon EID 17 at level 12, MITRE T1071.001 - T1021.002.
+
+PowerShell creating known Cobalt Strike named pipes detected via Sysmon EID 17 at level 12, MITRE T1071.001 - T1021.002.
+
 ![EID 17/18 - Named Pipe C2 Detection](img/c2_named_pipe.png)
 
 ### EID 24 - ClickFix (T1204.004) via Clipboard Change
+
 Chrome.exe triggering 15 Sysmon EID 24 (Clipboard Change) detections in under 5 minutes - rule 92751 level 8.
+
 ![EID 24 - ClickFix via Clipboard Change](img/ps-clickfix.png)
 
 ### Post-Exploitation Reconnaissance
+
 PowerShell spawning `net.exe`, `net1.exe`, `netstat.exe`, `whoami.exe`, `ipconfig.exe`, and `systeminfo.exe` in a 10-minute window.
+
 ![Post-Exploitation Reconnaissance](img/ps-netlocgroup.png)
 
 ### PowerShell Spawning PowerShell (T1059.001)
+
 Multiple PowerShell child instances created by a parent PowerShell - rule 92027, Sysmon EID 1, MITRE T1059.001 level 4.
+
 ![PowerShell Spawning PowerShell](img/ps-spawned.png)
 
-## Integrity Reference (v2.1 - 2026-08-03)
+---
+
+## Integrity Reference (v2.1 - 2026-08-27)
 
 SHA256 hashes of production files:
 
 | File | Location | SHA256 |
 |---|---|---|
-| `logic.py` | `process_tree_api/` | `74651e27826d964125d2f22c59fdd72890a9679ab2b03352a043259e4b91abdf` |
-| `server.py` | `process_tree_api/` | `4682baf8fc58adce9f15e4bc4bad344891d00ef473703a5f9a166b47c4542b9b` |
-| `index.html` | `process_tree_api/public/` | `af06e822fe7a35960377626a142693c0b9478f583758323f31381d88264612fa` |
+| `logic.py` | `process_tree_api/` | `cfded9a35f8273d400aa950cb1ac7258145175501a07fc7618fb791406d978fe` |
+| `server.py` | `process_tree_api/` | `9ec6961559bab058adc69647a12eacd94995899245865e083b5b840230d28fd0` |
+| `index.html` | `process_tree_api/public/` | `bc64976d8365a8add82daf88b7eb80e86d0a4502afbd138b31629272a039b9b2` |
 | `wptv.plugin.js` | `plugins/wptv/target/public/` | `e9dbd78fc0cc30c317307b55c9309dba14fd7da9dba4ff2137b55af651d6a6a1` |
 | `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `fe211c07b875fcf0bf436cc636068040f223471b2f0f5da5f5057a3931f94005` |
+
+---
 
 ## Acknowledgements
 
@@ -604,7 +684,7 @@ Special thanks to **Awwal Ishiaku** for his support throughout the development p
 
 Finally, a huge thank you to Santiago Bassett, CEO of Wazuh, for championing open source and building a space where community-driven innovation can truly thrive.
 
-This project reflects the **collaborative spirit of the open-source community**, where every suggestion, discussion, and contribution helps strengthen the ecosystem for everyone.
+---
 
 ## License
 
