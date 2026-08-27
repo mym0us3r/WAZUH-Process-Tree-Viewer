@@ -9,31 +9,33 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
-body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #1a202c; color: #e2e8f0; overflow: hidden; }
+body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #f7f8fa; color: #2c2c2a; overflow: hidden; }
 .navbar { background: #111827; color: #00a0d1; padding: 15px 25px; border-bottom: 2px solid #00a0d1; }
-.toolbar { background: #1f2937; padding: 12px 25px; display: flex; gap: 15px; border-bottom: 1px solid #374151; align-items: center; flex-wrap: wrap; }
-button { background: #00a0d1; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-button:disabled { background: #374151; cursor: not-allowed; }
-input, select { background: #374151; border: 1px solid #4b5563; color: white; padding: 8px; border-radius: 4px; }
-.stats { background: #111827; padding: 5px 25px; font-size: 12px; color: #9ca3af; font-weight: bold; }
-.stats span { color: #00a0d1; }
-div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !important; border: 1px solid #00a0d1 !important; padding: 10px !important; border-radius: 5px; font-family: 'Courier New', monospace; }
+.toolbar { background: #f1f3f5; padding: 12px 25px; display: flex; gap: 15px; border-bottom: 1px solid #d3d1c7; align-items: center; flex-wrap: wrap; }
+button { background: #185fa5; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+#loadBtn { background: #111827; color: #00a0d1; border: 1.5px solid #00a0d1; }
+body.theme-light #loadBtn { background: #00a0d1; color: #ffffff; border: none; }
+button:disabled { background: #b4b2a9; cursor: not-allowed; }
+input, select { background: #ffffff; border: 1px solid #b4b2a9; color: #2c2c2a; padding: 8px; border-radius: 4px; }
+.stats { background: #ffffff; padding: 5px 25px; font-size: 12px; color: #5f5e5a; font-weight: bold; }
+.stats span { color: #185fa5; }
+div.vis-tooltip { background-color: #ffffff !important; color: #2c2c2a !important; border: 1px solid #185fa5 !important; padding: 10px !important; border-radius: 5px; font-family: 'Courier New', monospace; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 
 #customRangeWrapper { display: none; gap: 8px; align-items: center; }
 
 .mainArea { display: flex; height: calc(100vh - 160px); }
-#mynetwork { flex: 1 1 auto; min-width: 0; background: #1a202c; cursor: grab; }
+#mynetwork { flex: 1 1 auto; min-width: 0; background: #ffffff; border-right: 3px solid #111827; cursor: grab; }
 
 /* Drag handle between graph and detail panel */
 #panelDivider {
     flex: 0 0 5px;
-    background: #374151;
+    background: #0084ac;
     cursor: col-resize;
     transition: background 0.15s;
     position: relative;
     z-index: 10;
 }
-#panelDivider:hover, #panelDivider.dragging { background: #00a0d1; }
+#panelDivider:hover, #panelDivider.dragging { background: #ffffff; }
 
 #detailPanel {
     flex: 0 0 360px;
@@ -45,7 +47,7 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
     overflow-y: auto;
     box-sizing: border-box;
 }
-#detailPanel h3 { margin: 0 0 10px 0; color: #00a0d1; font-size: 14px; word-break: break-all; }
+#detailPanel h3 { margin: 0 0 10px 0; color: #00a0d1; font-size: 14px; word-break: break-all; font-weight: 700; }
 #detailPanel pre {
     font-family: 'Courier New', monospace;
     font-size: 12px;
@@ -53,6 +55,7 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
     word-break: break-all;
     user-select: text;
     background: #1a202c;
+    color: #e2e8f0;
     padding: 10px;
     border-radius: 4px;
     border: 1px solid #374151;
@@ -80,25 +83,27 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
     border: 1px solid #374151; border-radius: 4px; padding: 8px; font-size: 12px;
     font-family: inherit; resize: vertical; min-height: 60px; margin-top: 10px;
 }
+#commentInput::placeholder { color: #6b7280; }
 #commentSubmitBtn {
     background: #00a0d1; color: #fff; border: none; border-radius: 4px;
     padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px;
 }
+#commentSubmitBtn:hover { background: #0084ac; }
 /* ── Badge pills (Elastic-style, below process title) ────────────────────── */
 .badge-pill {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
     cursor: default;
 }
-.badge-alert   { background: rgba(239,68,68,0.2);  color: #ef4444; border: 1px solid rgba(239,68,68,0.4); }
-.badge-conn    { background: rgba(125,211,252,0.15); color: #7dd3fc; border: 1px solid rgba(125,211,252,0.3); }
-.badge-file    { background: rgba(134,239,172,0.15); color: #86efac; border: 1px solid rgba(134,239,172,0.3); }
-.badge-lib     { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+.badge-alert   { background: rgba(239,68,68,0.12);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.35); }
+.badge-conn    { background: rgba(3,105,161,0.10); color: #7dd3fc; border: 1px solid rgba(3,105,161,0.3); }
+.badge-file    { background: rgba(21,128,61,0.10); color: #86efac; border: 1px solid rgba(21,128,61,0.3); }
+.badge-lib     { background: rgba(109,40,217,0.10); color: #c4b5fd; border: 1px solid rgba(109,40,217,0.3); }
 
 /* ── Structured field table (Basic Properties) ───────────────────────────── */
 .field-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.field-table td { padding: 5px 8px; vertical-align: top; border-bottom: 1px solid #1f2937; }
-.field-table .field-name  { color: #6b7280; font-weight: 600; white-space: nowrap; width: 38%; }
+.field-table td { padding: 5px 8px; vertical-align: top; border-bottom: 1px solid #374151; }
+.field-table .field-name  { color: #9ca3af; font-weight: 600; white-space: nowrap; width: 38%; }
 .field-table .field-value { color: #e2e8f0; word-break: break-all; font-family: 'Courier New', monospace; }
 .field-table .field-value.highlight { color: #f6ad55; }
 .field-section { color: #00a0d1; font-size: 11px; font-weight: 700; padding: 8px 0 4px 0;
@@ -107,19 +112,19 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
 /* ── Alert timeline (Alerts tab) ─────────────────────────────────────────── */
 .alert-entry {
     border-left: 3px solid #374151; padding: 8px 10px; margin-bottom: 8px;
-    background: #1a202c; border-radius: 0 4px 4px 0;
+    background: #1f2937; border-radius: 0 4px 4px 0;
 }
 .alert-entry.level-high   { border-left-color: #ef4444; }
 .alert-entry.level-medium { border-left-color: #f59e0b; }
-.alert-entry.level-low    { border-left-color: #6b7280; }
-.alert-entry.level-critical { border-left-color: #7c3aed; }
+.alert-entry.level-low    { border-left-color: #374151; }
+.alert-entry.level-critical { border-left-color: #c4b5fd; }
 .alert-event-type { font-size: 10px; font-weight: 700; text-transform: uppercase;
                     letter-spacing: 0.08em; color: #9ca3af; margin-bottom: 3px; }
-.alert-event-type.start  { color: #22c55e; }
-.alert-event-type.end    { color: #ef4444; }
-.alert-event-type.other  { color: #6b7280; }
+.alert-event-type.start  { color: #4ade80; }
+.alert-event-type.end    { color: #f87171; }
+.alert-event-type.other  { color: #9ca3af; }
 .alert-rule-desc { color: #e2e8f0; font-size: 12px; font-weight: 600; }
-.alert-meta { font-size: 11px; color: #6b7280; margin-top: 3px; }
+.alert-meta { font-size: 11px; color: #9ca3af; margin-top: 3px; }
 .alert-mitre { font-size: 10px; color: #a78bfa; margin-top: 2px; }
 .alert-level-badge {
     display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px;
@@ -129,13 +134,65 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
 .level-bg-high     { background: #ef4444; color: #fff; }
 .level-bg-medium   { background: #f59e0b; color: #000; }
 .level-bg-low      { background: #374151; color: #9ca3af; }
+
+/* ── Skin toggle: light theme overrides (applied when body has class theme-light) ── */
+body.theme-light .navbar { background: #00a0d1 !important; border-bottom-color: #007fa8 !important; }
+body.theme-light .navbar h2, body.theme-light .navbar a, body.theme-light .navbar span { color: rgba(255,255,255,0.85) !important; }
+body.theme-light #detailPanel { background: #00a0d1 !important; }
+body.theme-light #detailPanel h3 { color: #ffffff !important; }
+body.theme-light #detailPanel pre { background: rgba(0,0,0,0.15) !important; color: #ffffff !important; border-color: rgba(255,255,255,0.25) !important; }
+body.theme-light #detailPanel .notObserved { color: #ffe082 !important; }
+body.theme-light #detailPanel .placeholder { color: rgba(255,255,255,0.8) !important; }
+body.theme-light .tabBar { border-bottom-color: rgba(255,255,255,0.35) !important; }
+body.theme-light .tabBtn { color: rgba(255,255,255,0.75) !important; }
+body.theme-light .tabBtn:hover { color: #ffffff !important; }
+body.theme-light .tabBtn.active { color: #ffffff !important; border-bottom-color: #ffffff !important; }
+body.theme-light .commentEntry { background: rgba(0,0,0,0.12) !important; border-color: rgba(255,255,255,0.25) !important; }
+body.theme-light .commentEntry .commentMeta { color: rgba(255,255,255,0.65) !important; }
+body.theme-light .commentEntry .commentText { color: #ffffff !important; }
+body.theme-light #commentInput { background: rgba(0,0,0,0.15) !important; color: #ffffff !important; border-color: rgba(255,255,255,0.35) !important; }
+body.theme-light #commentSubmitBtn { background: rgba(0,0,0,0.2) !important; border: 1px solid rgba(255,255,255,0.4) !important; }
+body.theme-light .field-table td { border-bottom-color: rgba(255,255,255,0.2) !important; }
+body.theme-light .field-table .field-name { color: rgba(255,255,255,0.75) !important; }
+body.theme-light .field-table .field-value { color: #ffffff !important; }
+body.theme-light .field-table .field-value.highlight { color: #ffe082 !important; }
+body.theme-light .field-section { color: #ffffff !important; border-bottom-color: rgba(255,255,255,0.3) !important; }
+body.theme-light .alert-entry { background: rgba(0,0,0,0.12) !important; border-left-color: rgba(255,255,255,0.4) !important; }
+body.theme-light .alert-event-type { color: rgba(255,255,255,0.7) !important; }
+body.theme-light .alert-event-type.start { color: #86efac !important; }
+body.theme-light .alert-event-type.end { color: #fca5a5 !important; }
+body.theme-light .alert-rule-desc { color: #ffffff !important; }
+body.theme-light .alert-meta { color: rgba(255,255,255,0.7) !important; }
+body.theme-light .alert-mitre { color: #c4b5fd !important; }
+body.theme-light .level-bg-low { background: rgba(255,255,255,0.25) !important; color: #ffffff !important; }
+body.theme-light #panelDivider { background: #0084ac !important; }
+body.theme-light #panelDivider:hover { background: #ffffff !important; }
+
+/* ── Theme toggle button ───────────────────────────────────────────────── */
+#themeToggle {
+    background: none; border: none; cursor: pointer;
+    padding: 6px 8px; border-radius: 6px;
+    color: #00a0d1; opacity: 0.85;
+    transition: opacity 0.15s, color 0.2s;
+    display: flex; align-items: center; flex-shrink: 0; align-self: center;
+    margin-left: auto;
+}
+#themeToggle:hover { opacity: 1; }
+body.theme-light #themeToggle { color: rgba(255,255,255,0.85); }
+/* Navbar SVG icon: branco no tema light */
+body.theme-light .navbar svg circle  { stroke: #ffffff !important; fill: #ffffff !important; }
+body.theme-light .navbar svg circle:first-of-type { fill: none !important; }
+body.theme-light .navbar svg line    { stroke: #ffffff !important; }
+/* Canvas: branco no tema light, escuro no dark (default) */
+body.theme-light #mynetwork { background: #ffffff !important; border-right-color: #e2e8f0 !important; }
 </style>
 </head>
 <body>
-<div class="navbar">
+<div class="navbar" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+<div>
 <div style="display:flex; align-items:center; gap:10px;">
 <svg width="28" height="28" viewBox="0 0 32 32" style="flex-shrink:0;" aria-hidden="true">
-<rect width="32" height="32" rx="6" fill="#111827"/>
+<rect width="32" height="32" rx="6" fill="none"/>
 <circle cx="13" cy="13" r="8" fill="none" stroke="#00a0d1" stroke-width="2.2"/>
 <line x1="18.8" y1="18.8" x2="26" y2="26" stroke="#00a0d1" stroke-width="2.6" stroke-linecap="round"/>
 <circle cx="9.5" cy="10.5" r="1.5" fill="#00a0d1"/>
@@ -144,10 +201,14 @@ div.vis-tooltip { background-color: #2d3748 !important; color: #ffffff !importan
 <line x1="9.5" y1="10.5" x2="13" y2="16.5" stroke="#00a0d1" stroke-width="1.2"/>
 <line x1="16" y1="9" x2="13" y2="16.5" stroke="#00a0d1" stroke-width="1.2"/>
 </svg>
-<h2 style="margin:0; letter-spacing: 2px;">WAZUH Process Tree Viewer - Threat Hunting & Incident Response</h2>
+<h2 style="margin:0; letter-spacing: 2px; color:#e2e8f0;">WAZUH Process Tree Viewer - Threat Hunting & Incident Response</h2>
 </div>
 <a href="https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer" target="_blank" rel="noopener" style="color:#00a0d1; font-size:12px; text-decoration:none;">GitHub: https://github.com/mym0us3r/WAZUH-Process-Tree-Viewer</a>
 <span id="discoverBaseUrlLabel" style="color:#6b7280; font-size:11px; margin-left:16px;"></span>
+</div>
+<button id="themeToggle" onclick="toggleTheme()" title="Alternar skin dark / light">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>
 </div>
 <div class="toolbar">
 <div>AGENT ID: <input type="text" id="agentInput" placeholder="e.g. 009" style="width: 50px;"></div>
@@ -178,19 +239,19 @@ TO: <input type="datetime-local" id="endInput">
 <div>EventID: <input type="text" id="eventIdInput" placeholder="e.g. 17" style="width:70px;" title="Filter by Windows/Sysmon Event ID (e.g. 17, 24, 4104)"></div>
 <button id="loadBtn" onclick="loadTree()">ANALYZE</button>
 <button id="showAllBtn" onclick="showAllTrees()" style="display:none;background:#d97706;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">← SHOW ALL</button>
-<button onclick="exportAsPdf()" style="background:#374151;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">EXPORT PDF</button>
+<button onclick="exportAsPdf()" style="background:#e5e3da;color:#2c2c2a;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">EXPORT PDF</button>
 </div>
 <div class="stats">
 PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</span> | UPDATED: <span id="statTime">--:--:--</span>
-<span id="statusMsg" style="color:#6b7280;margin-left:8px;"></span>
+<span id="statusMsg" style="color:#5f5e5a;margin-left:8px;"></span>
 </div>
-<div id="reportGraphContainer" style="position:absolute; left:-9999px; top:0; width:1400px; height:900px; background:#1a202c;"></div>
+<div id="reportGraphContainer" style="position:absolute; left:-9999px; top:0; width:1400px; height:900px; background:#ffffff;"></div>
 <div class="mainArea">
 <div id="mynetwork"></div>
 <div id="panelDivider" title="Drag to resize"></div>
 <div id="detailPanel">
-<div style="font-size:10px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.1em;padding:4px 0 6px;border-bottom:1px solid #1f2937;margin-bottom:6px;">WPTV  -  Process Details</div>
-<h3 id="detailTitle" style="font-size:14px;margin:0 0 8px;color:#7dd3fc;"></h3>
+<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:.1em;padding:4px 0 6px;border-bottom:1px solid rgba(255,255,255,0.3);margin-bottom:6px;">WPTV  -  Process Details</div>
+<h3 id="detailTitle" style="font-size:14px;margin:0 0 8px;color:#ffffff;"></h3>
 <div id="detailPlaceholder" class="placeholder">Click a node in the graph to see its full details here - command line, user, host, IP, rule - plus a direct link to Discover. The text is selectable so you can copy it.</div>
 
 <div id="detailTabs" style="display:none;">
@@ -209,7 +270,7 @@ PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</s
 <div id="detailFieldTable" style="display:none;"></div>
 <pre id="detailBody" style="display:none;"></pre>
 <div id="detailWarning" class="notObserved" style="display:none;"></div>
-<a id="discoverLink" href="#" target="_blank" rel="noopener" style="display:none; color:#00a0d1; font-size:12px; margin-top:10px;">Open in Wazuh Discover &#8594;</a>
+<a id="discoverLink" href="#" target="_blank" rel="noopener" style="display:none; color:#ffffff; font-size:12px; margin-top:10px; text-decoration:underline;">Open in Wazuh Discover &#8594;</a>
 </div>
 
 <!-- Alert Timeline tab - like Elastic's alert list per process -->
@@ -221,8 +282,8 @@ PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</s
 </div>
 
 <div id="tabPane-detections" class="tabPane" style="display:none;">
-<pre id="detailSysmonProcess" style="display:none; color:#93c5fd;"></pre>
-<pre id="detailImageLoads" style="display:none; margin-top:10px; color:#a78bfa;"></pre>
+<pre id="detailSysmonProcess" style="display:none; color:#7dd3fc;"></pre>
+<pre id="detailImageLoads" style="display:none; margin-top:10px; color:#c4b5fd;"></pre>
 <pre id="detailFileCreates" style="display:none; margin-top:10px; color:#86efac;"></pre>
 <div id="detailSysmonRules" style="display:none; margin-top:10px;"></div>
 <div id="detectionsEmpty" class="placeholder">Sysmon Telemetry (EID 1 to 29): Correlated for this process in the queried window are shown under the Relations tab.</div>
@@ -277,6 +338,33 @@ const LINEAGE_COLOR    = { background: '#3b82f6', border: '#1d4ed8' };
 const ROOT_COLOR       = { background: '#f5c518', border: '#8a6d0b' };
 const BRANCH_COLOR     = { background: '#6b7280', border: '#3f434a' };
 const ENRICHED_BORDER  = '#c9a227';
+
+// WPTV icon as base64 data-URI for synthetic (unobserved/out-of-window) parent
+// nodes. circularImage shape is more robust with data URIs in vis-network.
+const WPTV_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="none" stroke="#00a0d1" stroke-width="3.2"/><line x1="28" y1="28" x2="39" y2="39" stroke="#00a0d1" stroke-width="3.8" stroke-linecap="round"/><circle cx="15" cy="16" r="2.2" fill="#00a0d1"/><circle cx="24" cy="13" r="2.2" fill="#00a0d1"/><circle cx="20" cy="24" r="2.5" fill="#00a0d1"/><line x1="15" y1="16" x2="20" y2="24" stroke="#00a0d1" stroke-width="1.8"/><line x1="24" y1="13" x2="20" y2="24" stroke="#00a0d1" stroke-width="1.8"/></svg>`;
+const WPTV_ICON_URI = 'data:image/svg+xml;base64,' + btoa(WPTV_ICON_SVG);
+
+// ── Skin toggle ──────────────────────────────────────────────────────────────
+const MOON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+const SUN_SVG  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+
+function toggleTheme() {
+    const isLight = document.body.classList.toggle('theme-light');
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.innerHTML = isLight ? SUN_SVG : MOON_SVG;
+    try { localStorage.setItem('wptv_theme', isLight ? 'light' : 'dark'); } catch(e) {}
+}
+
+// Restore saved theme on load
+(function() {
+    try {
+        if (localStorage.getItem('wptv_theme') === 'light') {
+            document.body.classList.add('theme-light');
+            const btn = document.getElementById('themeToggle');
+            if (btn) btn.innerHTML = SUN_SVG;
+        }
+    } catch(e) {}
+})();
 
 // ── Panel resize drag (divider between graph and detail panel) ──────────────
 // Wrapped in try/catch so a missing element (e.g. old cached HTML without
@@ -398,7 +486,7 @@ function renderFieldTable(meta) {
     rows.push(section('Wazuh'));
     rows.push(row('rule.id', meta.ruleId));
     if (meta.ruleLevel) {
-        const levelColor = meta.ruleLevel >= 12 ? '#ef4444' : meta.ruleLevel >= 8 ? '#f59e0b' : '#6b7280';
+        const levelColor = meta.ruleLevel >= 12 ? '#ef4444' : meta.ruleLevel >= 8 ? '#f59e0b' : '#5f5e5a';
         rows.push(`<tr><td class="field-name">rule.level</td><td class="field-value">
             <span style="color:${levelColor};font-weight:700;">${meta.ruleLevel}</span></td></tr>`);
     }
@@ -882,7 +970,7 @@ function tagCrossLinkEdges(edgesList, alreadyClaimedChildren) {
     const claimed = new Set(alreadyClaimedChildren || []);
     return edgesList.map((e) => {
         if (claimed.has(e.to)) {
-            return { ...e, dashes: true, color: { color: '#f6ad55' } };
+            return { ...e, dashes: true, color: { color: '#b45309' } };
         }
         claimed.add(e.to);
         return e;
@@ -957,7 +1045,7 @@ function exportGraphAsPng() {
     out.width = srcCanvas.width;
     out.height = srcCanvas.height;
     const ctx = out.getContext('2d');
-    ctx.fillStyle = '#1a202c';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, out.width, out.height);
     ctx.drawImage(srcCanvas, 0, 0);
 
@@ -1089,7 +1177,7 @@ async function captureBranchDiagram(rootId, allBranchIds) {
                     out.width = canvas.width;
                     out.height = canvas.height;
                     const ctx = out.getContext('2d');
-                    ctx.fillStyle = '#1a202c';
+                    ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, out.width, out.height);
                     ctx.drawImage(canvas, 0, 0);
                     const dataUrl = out.toDataURL('image/png');
@@ -1348,8 +1436,8 @@ function handleNodeRightClick(params) {
     const rn=nodesDataset.get(rid);
     const rname=rn?.meta?.name||rid;
     let menu=document.getElementById('ctxMenu');
-    if(!menu){menu=document.createElement('div');menu.id='ctxMenu';menu.style.cssText='position:fixed;background:#1f2937;border:1px solid #374151;border-radius:6px;padding:4px 0;z-index:9999;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.5);display:none;';document.body.appendChild(menu);}
-    menu.innerHTML=`<div onclick="filterToTree('${rid}');this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#e2e8f0;font-size:13px;border-bottom:1px solid #374151;">🔍 Filter only: <strong>${rname}</strong></div><div onclick="this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#6b7280;font-size:12px;">Cancel</div>`;
+    if(!menu){menu=document.createElement('div');menu.id='ctxMenu';menu.style.cssText='position:fixed;background:#ffffff;border:1px solid #d3d1c7;border-radius:6px;padding:4px 0;z-index:9999;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.18);display:none;';document.body.appendChild(menu);}
+    menu.innerHTML=`<div onclick="filterToTree('${rid}');this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#2c2c2a;font-size:13px;border-bottom:1px solid #d3d1c7;">🔍 Filter only: <strong>${rname}</strong></div><div onclick="this.parentElement.style.display='none';" style="padding:9px 16px;cursor:pointer;color:#5f5e5a;font-size:12px;">Cancel</div>`;
     menu.style.display='block';menu.style.left=params.event.clientX+'px';menu.style.top=params.event.clientY+'px';
     const hide=(e)=>{if(!menu.contains(e.target)){menu.style.display='none';document.removeEventListener('click',hide);}};
     setTimeout(()=>document.addEventListener('click',hide),10);
@@ -1460,7 +1548,7 @@ function showDetailPanel(nodeId) {
         };
         const cards = sysmonDets.map(d => {
             const eidName = EID_NAMES[d.eventId] || `EventID ${d.eventId}`;
-            const levelColor = d.ruleLevel >= 12 ? '#ef4444' : d.ruleLevel >= 8 ? '#f59e0b' : '#6b7280';
+            const levelColor = d.ruleLevel >= 12 ? '#ef4444' : d.ruleLevel >= 8 ? '#f59e0b' : '#5f5e5a';
 
             // Build Discover link for this specific Sysmon event
             let discoverUrl = '';
@@ -1495,25 +1583,25 @@ function showDetailPanel(nodeId) {
             const safeUrl1 = discoverUrl ? discoverUrl.replace(/"/g, '&quot;') : '';
             const link = safeUrl1
                 ? `<a href="${safeUrl1}" target="_blank" rel="noopener"
-                      style="color:#00a0d1;font-size:10px;text-decoration:none;">
+                      style="color:#ffffff;font-size:10px;text-decoration:underline;">
                      Open EID ${d.eventId} in Discover (${indexPattern}) &#8594;</a>` : '';
 
-            return `<div style="border-left:3px solid ${levelColor};padding:7px 10px;margin-bottom:8px;background:#1a202c;border-radius:0 4px 4px 0;">
-  <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">
+            return `<div style="border-left:3px solid ${levelColor};padding:7px 10px;margin-bottom:8px;background:rgba(0,0,0,0.12);border-radius:0 4px 4px 0;">
+  <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">
     EID ${d.eventId} &mdash; ${eidName}
     <span style="background:${levelColor};color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;font-size:10px;">Level ${d.ruleLevel}</span>
   </div>
-  <div style="color:#e2e8f0;font-size:12px;font-weight:600;margin-bottom:2px;">${d.ruleDesc || 'N/A'}</div>
-  <div style="font-size:11px;color:#6b7280;">
+  <div style="color:#ffffff;font-size:12px;font-weight:600;margin-bottom:2px;">${d.ruleDesc || 'N/A'}</div>
+  <div style="font-size:11px;color:rgba(255,255,255,0.75);">
     <span style="color:#7dd3fc;">rule.id:</span> ${d.ruleId}
     &nbsp;&middot;&nbsp;
     <span style="color:#7dd3fc;">providerName:</span> ${d.providerName || 'Microsoft-Windows-Sysmon'}
-    ${mitreIds ? `&nbsp;&middot;&nbsp;<span style="color:#a78bfa;">&#9731; MITRE: ${mitreIds}</span>` : ''}
+    ${mitreIds ? `&nbsp;&middot;&nbsp;<span style="color:#c4b5fd;">&#9731; MITRE: ${mitreIds}</span>` : ''}
   </div>
   <div style="margin-top:5px;">${link}</div>
 </div>`;
         });
-        sysmonDetsBox.innerHTML = `<div style="font-size:11px;font-weight:700;color:#00a0d1;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #374151;padding-bottom:4px;margin-bottom:8px;">
+        sysmonDetsBox.innerHTML = `<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,0.3);padding-bottom:4px;margin-bottom:8px;">
   &#9650; DETECTION EVENTS (${sysmonDets.length})</div>${cards.join('')}`;
         sysmonDetsBox.style.display = 'block';
         hasDetections = true;
@@ -1856,7 +1944,7 @@ async function generateFullReport() {
             roots.push(n);
     });
 
-    
+
 
     // ── Page 2: summary table ─────────────────────────────────────────────
     doc.addPage(); y = 50;
@@ -2134,6 +2222,447 @@ function collectFullTree(rootId) {
     }
 
 
+// ═══ Process card visual (icons, no external font/emoji dependency) ═══════
+// Every glyph below is drawn with plain canvas primitives (arc/line/rect) so
+// it renders identically in every browser with zero risk of the "empty box"
+// failure mode that webfont-based icon sets (FontAwesome, etc.) have if the
+// font hasn't finished loading before the first draw.
+//
+// Categories are grounded in Microsoft's own documentation for the native
+// Windows binaries (Windows Commands reference / Windows Console docs):
+//   shell      -> cmd.exe, powershell.exe, pwsh.exe        (the two command-line shells)
+//   registry   -> reg.exe, regsvr32.exe                    (registry operations)
+//   installer  -> msiexec.exe                              (Windows Installer)
+//   identity   -> whoami.exe                                (user/group/privilege info)
+//   time       -> w32tm.exe                                 (Windows Time service tool)
+//   scheduler  -> schtasks.exe                               (task scheduler)
+//   service    -> sc.exe                                     (service control)
+//   network    -> net.exe, netsh.exe, ipconfig.exe          (networking tools)
+//   console    -> conhost.exe                                (Console Window Host)
+// RMM tools (ScreenConnect, AnyDesk, TeamViewer, ...) are NOT Microsoft-
+// documented commands - kept as their own category rather than lumped in
+// with native Windows binaries.
+const PROCESS_CATEGORY_MAP = {
+    // Shell / terminal
+    'cmd.exe': 'shell', 'powershell.exe': 'shell', 'pwsh.exe': 'shell',
+    'bash.exe': 'shell', 'sh.exe': 'shell', 'wsl.exe': 'shell', 'wt.exe': 'shell',
+    'powershell_ise.exe': 'shell',
+    // Registry
+    'reg.exe': 'registry', 'regsvr32.exe': 'registry', 'regedit.exe': 'registry',
+    'regasm.exe': 'registry', 'regsvcs.exe': 'registry',
+    // Installer / package
+    'msiexec.exe': 'installer', 'setup.exe': 'installer', 'install.exe': 'installer',
+    'uninstall.exe': 'installer', 'runonce.exe': 'installer', 'dpinst.exe': 'installer',
+    'wusa.exe': 'installer', 'pkgmgr.exe': 'installer', 'msu.exe': 'installer',
+    'dism.exe': 'installer', 'expand.exe': 'installer',
+    // Identity / user / session
+    'whoami.exe': 'identity', 'userinit.exe': 'identity', 'winlogon.exe': 'identity',
+    'lsass.exe': 'identity', 'logonui.exe': 'identity', 'credwiz.exe': 'identity',
+    'wermgr.exe': 'identity', 'systeminfo.exe': 'identity', 'hostname.exe': 'identity',
+    'wfmdr.exe': 'identity', 'ptptionagent.exe': 'identity', 'ptsessionagent.exe': 'identity',
+    'rdpclip.exe': 'identity', 'tstheme.exe': 'identity', 'dwm.exe': 'identity',
+    'ctfmon.exe': 'identity', 'settingssynchost.exe': 'identity',
+    // Time
+    'w32tm.exe': 'time',
+    // Scheduler / task
+    'schtasks.exe': 'scheduler', 'taskhost.exe': 'scheduler', 'taskhostw.exe': 'scheduler',
+    'taskeng.exe': 'scheduler', 'taskmgr.exe': 'scheduler',
+    // Service / background worker
+    'sc.exe': 'service', 'services.exe': 'service', 'svchost.exe': 'service',
+    'spoolsv.exe': 'service', 'wuauclt.exe': 'service', 'msdtc.exe': 'service',
+    'dllhost.exe': 'service', 'backgroundtaskhost.exe': 'service',
+    'runtimebroker.exe': 'service', 'sihost.exe': 'service',
+    'securityhealthsystray.exe': 'service', 'securityhealthservice.exe': 'service',
+    'filecoauth.exe': 'service', 'searchindexer.exe': 'service', 'searchhost.exe': 'service',
+    'fontdrvhost.exe': 'service', 'lsm.exe': 'service', 'smss.exe': 'service',
+    'csrss.exe': 'service', 'wininit.exe': 'service', 'audiodg.exe': 'service',
+    'wmpnetwk.exe': 'service', 'sppsvc.exe': 'service', 'wscsvc.exe': 'service',
+    'trustedinstaller.exe': 'service', 'tiworker.exe': 'service',
+    'mssmpeng.exe': 'service', 'nissrv.exe': 'service',
+    'ravbg64.exe': 'service', 'rtngui64.exe': 'service', 'rtkngui64.exe': 'service',
+    'rtkngui.exe': 'service', 'ravbg32.exe': 'service',
+    // Network / comms
+    'net.exe': 'network', 'netsh.exe': 'network', 'ipconfig.exe': 'network',
+    'ping.exe': 'network', 'tracert.exe': 'network', 'nslookup.exe': 'network',
+    'net1.exe': 'network', 'arp.exe': 'network', 'route.exe': 'network',
+    'netstat.exe': 'network', 'curl.exe': 'network', 'wget.exe': 'network',
+    'tracerpt.exe': 'network', 'checknetisolation.exe': 'network',
+    'vpnbackgroundcontroller.exe': 'network', 'rasphone.exe': 'network',
+    // Console / UI
+    'conhost.exe': 'console', 'explorer.exe': 'console',
+    'wscript.exe': 'shell', 'cscript.exe': 'shell', 'mshta.exe': 'shell',
+    // Microsoft Edge / browsers
+    'msedge.exe': 'console', 'chrome.exe': 'console', 'firefox.exe': 'console',
+    'iexplore.exe': 'console', 'opera.exe': 'console',
+    // System info / discovery
+    'wmic.exe': 'service', 'bcdedit.exe': 'service', 'sc.exe': 'service',
+    'phonelink.exe': 'service', 'yourphone.exe': 'service',
+};
+const RMM_NAME_MARKERS = ['screenconnect', 'anydesk', 'teamviewer', 'connectwise', 'atera', 'splashtop'];
+
+const CATEGORY_ACCENT = {
+    shell: '#0c447c', registry: '#854f0b', installer: '#3c3489', identity: '#0f6e56',
+    time: '#5f5e5a', scheduler: '#993c1d', service: '#5f5e5a', network: '#185fa5',
+    rmm: '#72243e', console: '#5f5e5a', ghost: '#0f6e56', unknown: '#888780',
+};
+const CATEGORY_CHIP_BG = {
+    shell: '#e6f1fb', registry: '#faeeda', installer: '#eeedfe', identity: '#e1f5ee',
+    time: '#f1efe8', scheduler: '#faece7', service: '#f1efe8', network: '#e6f1fb',
+    rmm: '#fbeaf0', console: '#f1efe8', ghost: '#e1f5ee', unknown: '#f1efe8',
+};
+
+function classifyProcessCategory(meta) {
+    if (meta && meta.sysmon_only) return 'ghost';
+    const name = ((meta && meta.name) || '').toLowerCase();
+    if (RMM_NAME_MARKERS.some((m) => name.includes(m))) return 'rmm';
+    return PROCESS_CATEGORY_MAP[name] || 'unknown';
+}
+
+// Draws one glyph, centered at (cx, cy), roughly filling a `size`-px box.
+function drawCategoryGlyph(ctx, category, cx, cy, size, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1.4, size * 0.09);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const s = size / 2;
+
+    switch (category) {
+        case 'shell': {
+            // ">" prompt chevron + underscore
+            ctx.beginPath();
+            ctx.moveTo(cx - s * 0.55, cy - s * 0.5);
+            ctx.lineTo(cx - s * 0.05, cy);
+            ctx.lineTo(cx - s * 0.55, cy + s * 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - s * 0.05, cy + s * 0.55);
+            ctx.lineTo(cx + s * 0.55, cy + s * 0.55);
+            ctx.stroke();
+            break;
+        }
+        case 'registry': {
+            // key: ring + shaft + two teeth
+            ctx.beginPath();
+            ctx.arc(cx - s * 0.35, cy - s * 0.05, s * 0.35, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - s * 0.02, cy - s * 0.05);
+            ctx.lineTo(cx + s * 0.65, cy - s * 0.05);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + s * 0.35, cy - s * 0.05);
+            ctx.lineTo(cx + s * 0.35, cy + s * 0.3);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + s * 0.62, cy - s * 0.05);
+            ctx.lineTo(cx + s * 0.62, cy + s * 0.22);
+            ctx.stroke();
+            break;
+        }
+        case 'installer': {
+            // package: two overlapping rounded squares (3D box silhouette)
+            const w = s * 1.05;
+            ctx.strokeRect(cx - w * 0.55, cy - w * 0.4, w * 0.75, w * 0.75);
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.55, cy - w * 0.05);
+            ctx.lineTo(cx - w * 0.15, cy - w * 0.45);
+            ctx.lineTo(cx + w * 0.6, cy - w * 0.45);
+            ctx.lineTo(cx + w * 0.2, cy - w * 0.05);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + w * 0.2, cy - w * 0.05);
+            ctx.lineTo(cx + w * 0.6, cy - w * 0.45);
+            ctx.lineTo(cx + w * 0.6, cy + w * 0.3);
+            ctx.lineTo(cx + w * 0.2, cy + w * 0.7);
+            ctx.closePath();
+            ctx.stroke();
+            break;
+        }
+        case 'identity': {
+            // person: head + shoulders arc
+            ctx.beginPath();
+            ctx.arc(cx, cy - s * 0.35, s * 0.32, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy + s * 0.65, s * 0.62, Math.PI, 2 * Math.PI);
+            ctx.stroke();
+            break;
+        }
+        case 'time': {
+            // clock: ring + hands
+            ctx.beginPath();
+            ctx.arc(cx, cy, s * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx, cy - s * 0.4);
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + s * 0.32, cy + s * 0.12);
+            ctx.stroke();
+            break;
+        }
+        case 'scheduler': {
+            // calendar: rounded rect + header line + two rings
+            const w = s * 1.1, h = s * 1.0;
+            roundRectPath(ctx, cx - w / 2, cy - h / 2, w, h, s * 0.14);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - w / 2, cy - h * 0.15);
+            ctx.lineTo(cx + w / 2, cy - h * 0.15);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx - w * 0.22, cy - h / 2, s * 0.09, 0, Math.PI * 2);
+            ctx.arc(cx + w * 0.22, cy - h / 2, s * 0.09, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+        }
+        case 'service': {
+            // gear (simplified): ring + 4 notches
+            ctx.beginPath();
+            ctx.arc(cx, cy, s * 0.4, 0, Math.PI * 2);
+            ctx.stroke();
+            [0, 90, 180, 270].forEach((deg) => {
+                const a = (deg * Math.PI) / 180;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(a) * s * 0.55, cy + Math.sin(a) * s * 0.55);
+                ctx.lineTo(cx + Math.cos(a) * s * 0.78, cy + Math.sin(a) * s * 0.78);
+                ctx.stroke();
+            });
+            break;
+        }
+        case 'network': {
+            // globe: ring + equator + meridian arc
+            ctx.beginPath();
+            ctx.arc(cx, cy, s * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - s * 0.62, cy);
+            ctx.lineTo(cx + s * 0.62, cy);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, s * 0.28, s * 0.62, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+        }
+        case 'rmm': {
+            // remote monitor: screen rect + stand
+            const w = s * 1.15, h = s * 0.82;
+            roundRectPath(ctx, cx - w / 2, cy - h * 0.7, w, h, s * 0.1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + h * 0.12);
+            ctx.lineTo(cx, cy + h * 0.42);
+            ctx.moveTo(cx - w * 0.22, cy + h * 0.42);
+            ctx.lineTo(cx + w * 0.22, cy + h * 0.42);
+            ctx.stroke();
+            break;
+        }
+        case 'console': {
+            // window frame: rounded rect + inner pane
+            const w = s * 1.15, h = s * 0.95;
+            roundRectPath(ctx, cx - w / 2, cy - h / 2, w, h, s * 0.14);
+            ctx.stroke();
+            ctx.strokeRect(cx - w * 0.3, cy - h * 0.15, w * 0.6, h * 0.42);
+            break;
+        }
+        case 'ghost': {
+            // correlated-via-telemetry marker: dashed ring
+            ctx.setLineDash([s * 0.28, s * 0.2]);
+            ctx.beginPath();
+            ctx.arc(cx, cy, s * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            break;
+        }
+        default: {
+            // generic process: app window with header bar + 3 traffic-light dots
+            const w = s * 1.1, h = s * 0.95;
+            roundRectPath(ctx, cx - w / 2, cy - h / 2, w, h, s * 0.14);
+            ctx.stroke();
+            // header bar
+            ctx.beginPath();
+            ctx.moveTo(cx - w / 2, cy - h * 0.15);
+            ctx.lineTo(cx + w / 2, cy - h * 0.15);
+            ctx.stroke();
+            // three dots in header
+            const dY = cy - h * 0.325;
+            [-0.28, 0, 0.28].forEach(dx => {
+                ctx.beginPath();
+                ctx.arc(cx + dx * w * 0.45, dY, s * 0.075, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            // two content lines
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.32, cy + h * 0.1);
+            ctx.lineTo(cx + w * 0.32, cy + h * 0.1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.32, cy + h * 0.32);
+            ctx.lineTo(cx + w * 0.15, cy + h * 0.32);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+// Existing color-setting logic (recolorRootsAndBranches, handleNodeClick,
+// handleNodeDoubleClick, the _treeUpd loop below) is left completely
+// untouched - it keeps writing color.background/border exactly as before.
+// This renderer only REINTERPRETS those same values into a ring color, so
+// none of the click/lineage/root-detection logic needs to change.
+function ringColorFromNodeColor(bg) {
+    if (bg === '#b91c1c') return '#f2a623';                 // root -> amber
+    if (bg === '#1d4ed8' || bg === '#3b82f6') return '#378add'; // selected/lineage -> blue
+    return '#d3d1c7';                                        // default child -> light gray
+}
+
+function renderProcessCard({ ctx, id, x, y, state }) {
+    const n = (nodesDataset && nodesDataset.get(id)) || {};
+    const meta = n.meta || {};
+    const isRoot = !meta.observed;
+    const name = meta.name || (n.label || '').split('\n').pop() || id;
+    const pid = meta.pid || '';
+    const order = meta.order;
+    const category = classifyProcessCategory(meta);
+    const accent = CATEGORY_ACCENT[category] || CATEGORY_ACCENT.unknown;
+    const chipBg = CATEGORY_CHIP_BG[category] || CATEGORY_CHIP_BG.unknown;
+    const bg = (n.color && n.color.background) || '';
+    let ring = meta.sysmon_only ? '#0f6e56' : ringColorFromNodeColor(bg);
+
+    const hasAlerts = !!(meta.badgeCounts && meta.badgeCounts.alerts > 0);
+    const hasEnriched = !!(meta.sysmonProcess ||
+        (meta.connections && meta.connections.length) ||
+        (meta.imageLoads && meta.imageLoads.length) ||
+        (meta.fileCreates && meta.fileCreates.length));
+    let badge = null;
+    if (!isRoot) {
+        badge = hasAlerts ? { ch: '!', bg: '#e24b4a' }
+              : hasEnriched ? { ch: '\u2713', bg: '#639922' }
+              : { ch: '?', bg: '#378add' };
+    }
+
+    if (isRoot) {
+        // Root: circular avatar with an amber ring, text to the right -
+        // matches the reference mockup's treatment of the Parent Process.
+        const R = 30;
+        return {
+            drawNode: () => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, R + 5, 0, Math.PI * 2);
+                ctx.strokeStyle = ring;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x, y, R, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#d3d1c7';
+                ctx.stroke();
+                drawCategoryGlyph(ctx, category, x, y, R * 1.05, '#2c2c2a');
+
+                const tx = x + R + 14;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+                if (order != null) {
+                    ctx.font = 'bold 12px Arial, sans-serif';
+                    ctx.fillStyle = ring;
+                    ctx.fillText(String(order), tx, y - 24);
+                }
+                ctx.font = '10px Arial, sans-serif';
+                ctx.fillStyle = ring;
+                ctx.fillText('Parent Process  -  PID ' + pid, tx, y - 14);
+                ctx.font = 'bold 13px Arial, sans-serif';
+                ctx.fillStyle = '#2c2c2a';
+                ctx.fillText(name, tx, y + 3);
+                ctx.font = '11px Arial, sans-serif';
+                ctx.fillStyle = '#5f5e5a';
+                if (meta.user) {
+                    ctx.fillText('User: ' + meta.user, tx, y + 18);
+                }
+                ctx.restore();
+            },
+            nodeDimensions: { width: (R + 14) * 2 + 160, height: R * 2 + 20 }
+        };
+    }
+
+    // Non-root: rectangular card - icon chip on the left, text stacked
+    // to the right, small confirmation badge in the top-right corner.
+    ctx.font = 'bold 13px Arial, sans-serif';
+    const nameW = ctx.measureText(name).width;
+    ctx.font = '11px Arial, sans-serif';
+    const pidW = ctx.measureText('PID ' + pid).width;
+    const textW = Math.max(nameW, pidW);
+    const CHIP = 30;
+    const PAD = 10;
+    const w = Math.min(Math.max(CHIP + PAD * 3 + textW, 150), 280);
+    const h = 52;
+    const left = x - w / 2, top = y - h / 2;
+
+    return {
+        drawNode: () => {
+            ctx.save();
+            roundRectPath(ctx, left, top, w, h, 8);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = ring;
+            ctx.stroke();
+
+            const chipX = left + PAD, chipY = top + (h - CHIP) / 2;
+            roundRectPath(ctx, chipX, chipY, CHIP, CHIP, 6);
+            ctx.fillStyle = chipBg;
+            ctx.fill();
+            drawCategoryGlyph(ctx, category, chipX + CHIP / 2, chipY + CHIP / 2, CHIP * 0.72, accent);
+
+            const tx = chipX + CHIP + PAD;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+            if (order != null) {
+                ctx.font = 'bold 10px Arial, sans-serif';
+                ctx.fillStyle = ring === '#d3d1c7' ? '#5f5e5a' : ring;
+                ctx.fillText(String(order), tx, top + 15);
+            }
+            ctx.font = 'bold 12px Arial, sans-serif';
+            ctx.fillStyle = '#2c2c2a';
+            ctx.fillText(name, tx, top + 30);
+            ctx.font = '10px Arial, sans-serif';
+            ctx.fillStyle = '#5f5e5a';
+            ctx.fillText('PID ' + pid, tx, top + 43);
+
+            if (badge) {
+                const bx = left + w - 3, by = top + 3;
+                ctx.beginPath();
+                ctx.arc(bx, by, 8, 0, Math.PI * 2);
+                ctx.fillStyle = badge.bg;
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(badge.ch, bx, by + 1);
+            }
+            ctx.restore();
+        },
+        nodeDimensions: { width: w, height: h }
+    };
+}
+
+
 async function loadTree() {
     const identityParams = buildIdentityParams();
     const filter   = document.getElementById('filterInput').value;
@@ -2159,14 +2688,14 @@ async function loadTree() {
     lineageOriginalColors = {};
 
     if (!identityParams) {
-        statusMsg.style.color = '#f87171';
+        statusMsg.style.color = '#a32d2d';
         statusMsg.innerText = 'fill in at least one of AGENT ID, HOST or IP';
         return;
     }
 
     btn.disabled = true;
     btn.innerText = 'LOADING...';
-    statusMsg.style.color = '#f6ad55';
+    statusMsg.style.color = '#b45309';
     statusMsg.innerText = 'querying the backend...';
 
     const fetchStart = performance.now();
@@ -2186,11 +2715,20 @@ async function loadTree() {
         const ANGLE_SPREAD_DEG = 150; // < 180 on purpose: at a full 180 the outermost branches go nearly flat/horizontal
 
         const positions = computeLRTreeLayout(data.nodes || [], data.edges || []);
-        const nodesForDataset = (data.nodes || []).map((n) => ({
-            ...n,
-            x: positions[n.id] ? positions[n.id].x : 0,
-            y: positions[n.id] ? positions[n.id].y : 0
-        }));
+        const nodesForDataset = (data.nodes || []).map((n) => {
+            // Strip "RULE ID:" from the backend tooltip for all nodes -
+            // it's always the generic EID 4688 rule (67027) and is already
+            // visible in the right panel Basic Properties tab.
+            const cleanTitle = n.title
+                ? n.title.split('\n').filter(l => !l.trim().startsWith('RULE ID:')).join('\n').trim()
+                : '';
+            return {
+                ...n,
+                title: cleanTitle,
+                x: positions[n.id] ? positions[n.id].x : 0,
+                y: positions[n.id] ? positions[n.id].y : 0
+            };
+        });
 
         // Network relation nodes/edges: a new, distinct edge type built from
         // real correlated data (Sysmon EventID 3), not a cosmetic addition -
@@ -2235,14 +2773,12 @@ async function loadTree() {
         nodesDataset = new vis.DataSet(nodesForDataset.concat(Object.values(networkNodes)));
         edgesDataset = new vis.DataSet(tagCrossLinkEdges(data.edges || []).concat(networkEdges));
         recolorRootsAndBranches();
-        // Aplicar estilo tree-view (box) e applyChildrenPagination após render
+        // Aplicar estilo tree-view (card) e applyChildrenPagination após render
         const _treeUpd = [];
         nodesDataset.forEach((n) => {
             if (!n.meta || n.meta.isNetworkNode || n.meta.isMoreNode) return;
             const _name = n.meta.name || (n.label || '').split('\n')[0];
             const _pid  = n.meta.pid || '';
-            const _icon = n.meta.sysmon_only ? '◈ '
-                        : (n.meta.badgeCounts && n.meta.badgeCounts.alerts > 0) ? '⚡ ' : '';
             // Fixed colour scheme:
             // Parent Process (no parent in tree) → permanent RED
             // Children/grandchildren → GRAY (blue only when selected by click)
@@ -2251,39 +2787,72 @@ async function loadTree() {
             const _bdr  = _isRoot ? '#7f1d1d' : '#374151';
             const _user  = n.meta.user  || '';
             const _host  = n.meta.host  || '';
-            const _title = _isRoot
-                ? 'PARENT PROCESS  -  ' + _name + (_user ? '  -  ' + _user : '') + (_host ? '  -  ' + _host : '')
-                : undefined;
-            _treeUpd.push({
-                id: n.id, shape: 'box',
-                label: _icon + _name + '\n(PID: ' + _pid + ')',
-                color: { background: _bg, border: _bdr },
-                font: { color: '#f1f5f9', size: 12, face: 'Arial' },
-                borderWidth: 2, shadow: false,
-                widthConstraint: { maximum: 280 },
-                margin: { top: 6, bottom: 6, left: 10, right: 10 },
-                ..._title ? { title: _title } : {},
-            });
+
+            if (_isRoot) {
+                // Extract user/host/time from meta (preferred) or from
+                // the raw backend title string "USER: x | HOST: y\nTIME: z\n..."
+                let _tUser = _user || '';
+                let _tHost = _host || '';
+                let _tTime = n.meta.time || '';
+
+                if (!_tUser || !_tHost || !_tTime) {
+                    const _bLines = (n.title || '').split('\n');
+                    const _uhLine = _bLines.find(l => l.trim().startsWith('USER:'));
+                    if (_uhLine) {
+                        if (!_tUser) { const m = _uhLine.match(/USER:\s*([^|]+)/); if (m) _tUser = m[1].trim(); }
+                        if (!_tHost) { const m = _uhLine.match(/HOST:\s*(.+)/);   if (m) _tHost = m[1].trim(); }
+                    }
+                    if (!_tTime) {
+                        const _tl = _bLines.find(l => l.trim().startsWith('TIME:'));
+                        if (_tl) { const m = _tl.match(/TIME:\s*(.+)/); if (m) _tTime = m[1].trim(); }
+                    }
+                }
+
+                // Format time: "2026-08-27T04:22:05.4070764Z" → "2026-08-27 04:22:05"
+                if (_tTime) {
+                    _tTime = _tTime.replace('T', ' ').replace(/\.\d+Z?$/, '').replace('Z', '').trim();
+                }
+
+                // Build tooltip with only available fields, in this exact order
+                const _tooltipLines = [];
+                if (_tUser) _tooltipLines.push('User: '           + _tUser);
+                if (_tHost) _tooltipLines.push('Host: '           + _tHost);
+                if (_tTime) _tooltipLines.push('Time: '           + _tTime);
+                              _tooltipLines.push('Parent Process: ' + _name);
+                _treeUpd.push({
+                    id: n.id,
+                    shape: 'circularImage',
+                    image: WPTV_ICON_URI,
+                    size: 28,
+                    label: 'Parent Process - PID ' + _pid + '\n' + _name,
+                    font: { color: '#1e293b', size: 11, face: 'Arial', bold: { color: '#00a0d1', size: 11, face: 'Arial', vadjust: 0 } },
+                    color: { border: n.meta.sysmonProcess ? '#c9a227' : '#00a0d1', background: '#ffffff' },
+                    borderWidth: 3,
+                    title: _tooltipLines.join('\n'),
+                });
+            } else {
+                _treeUpd.push({
+                    id: n.id, shape: 'custom',
+                    label: _name + '\n(PID: ' + _pid + ')',
+                    color: { background: _bg, border: _bdr },
+                });
+            }
         });
         if (_treeUpd.length) nodesDataset.update(_treeUpd);
         // applyChildrenPagination() called AFTER network is created (requires network.getPosition)
 
         const options = {
             nodes: {
-                shape: 'box',
-                font: { color: '#f1f5f9', size: 12, face: 'Arial' },
-                borderWidth: 2,
-                shadow: false,
-                widthConstraint: { maximum: 280 },
-                margin: { top: 6, bottom: 6, left: 10, right: 10 }
+                shape: 'custom',
+                ctxRenderer: renderProcessCard
             },
             edges: {
                 arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-                color: { color: '#475569' },
+                color: { color: '#9aa5b1' },
                 smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.3 },
                 // Time delta labels on edges (e.g. "622ms", "4s") - global font
                 // style only; individual edges carry their own label in the data
-                font: { color: '#6b7280', size: 10, strokeWidth: 2, strokeColor: '#1a202c', align: 'middle' }
+                font: { color: '#374151', size: 10, strokeWidth: 2, strokeColor: '#ffffff', align: 'middle' }
             },
             physics: false,
             interaction: {
@@ -2323,7 +2892,7 @@ async function loadTree() {
         // MORE pagination: called here because network already exists and getPosition works
         applyChildrenPagination();
 
-        statusMsg.style.color = '#9ca3af';
+        statusMsg.style.color = '#5f5e5a';
         if (nodeCount === 0) {
             const rawTotal = data.stats?.total_raw || 0;
             const activeFilter = document.getElementById('filterInput')?.value?.trim();
@@ -2340,7 +2909,7 @@ async function loadTree() {
         }
     } catch (e) {
         console.error('WPTV loadTree error:', e);
-        statusMsg.style.color = '#f87171';
+        statusMsg.style.color = '#a32d2d';
         // Show the actual JS error message so it's visible without opening DevTools
         statusMsg.innerText = `error: ${e && e.message ? e.message : String(e)} (open console for full traceback)`;
     } finally {
@@ -2575,7 +3144,31 @@ async function handleNodeClick(params) {
                 }
             }
 
-            nodesDataset.add({ ...n, x: pos.x, y: pos.y });
+            // Synthetic (unobserved) parent added via expand → WPTV icon + rich tooltip
+            let _nodeToAdd = { ...n, x: pos.x, y: pos.y };
+            if (n.meta && !n.meta.observed && !n.meta.isNetworkNode && !n.meta.isMoreNode) {
+                const _m = n.meta;
+                _nodeToAdd.shape = 'circularImage';
+                _nodeToAdd.image = WPTV_ICON_URI;
+                _nodeToAdd.size = 28;
+                _nodeToAdd.borderWidth = 3;
+                _nodeToAdd.label = 'Parent Process - PID ' + (_m.pid || 'N/A') + '\n' + (_m.name || 'Unknown');
+                _nodeToAdd.font = { color: '#1e293b', size: 11, face: 'Arial' };
+                _nodeToAdd.color = { border: _m.sysmonProcess ? '#c9a227' : '#00a0d1', background: '#ffffff' };
+                let _eTUser = _m.user || '';
+                let _eTHost = _m.host || '';
+                let _eTTime = _m.time || '';
+                if (_eTTime) {
+                    _eTTime = _eTTime.replace('T', ' ').replace(/\.\d+Z?$/, '').replace('Z', '').trim();
+                }
+                const _eTLines = [];
+                if (_eTUser) _eTLines.push('User: '           + _eTUser);
+                if (_eTHost) _eTLines.push('Host: '           + _eTHost);
+                if (_eTTime) _eTLines.push('Time: '           + _eTTime);
+                              _eTLines.push('Parent Process: ' + (_m.name || 'Unknown'));
+                _nodeToAdd.title = _eTLines.join('\n');
+            }
+            nodesDataset.add(_nodeToAdd);
         });
 
         const existingChildIds = new Set(
