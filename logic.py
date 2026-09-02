@@ -1611,3 +1611,150 @@ class ProcessTreeLogic:
         for child_pid, d in latest.items():
             if d['ppid'] == pid:
                 nodes_map[f"P{child_pid}"] = self._make_node(child_pid, d, sysmon_enrichment=sysmon_enrichment)
+
+    # ── AI Analysis ──────────────────────────────────────────────────────────
+    def analyze_tree(self, payload: dict) -> dict:
+        """
+        Calls Claude Sonnet 4.6 to analyse the current WPTV process tree.
+        Returns structured JSON: risk_score, risk_level, summary,
+        techniques (MITRE ATT&CK), highlighted_nodes, recommendations.
+
+        Requires WPTV_ANTHROPIC_API_KEY in /etc/wazuh-process-tree/wptv.env.
+        """
+        import anthropic as _anthropic
+        import json as _json
+
+        api_key = os.environ.get('WPTV_ANTHROPIC_API_KEY', '').strip()
+        if not api_key:
+            raise RuntimeError(
+                'WPTV_ANTHROPIC_API_KEY not set. '
+                'Add it to /etc/wazuh-process-tree/wptv.env and restart the service.')
+
+        nodes      = payload.get('nodes', [])
+        edges      = payload.get('edges', [])
+        agent_id   = payload.get('agent_id',  '—')
+        host       = payload.get('host',       '—')
+        ip         = payload.get('ip',         '—')
+        time_range = payload.get('time_range', '—')
+
+        if not nodes:
+            return {
+                'risk_score': 0, 'risk_level': 'LOW',
+                'summary': ['Nenhum processo carregado no WPTV.'],
+                'techniques': [], 'highlighted_nodes': [],
+                'recommendations': [],
+            }
+
+        # Prioritise nodes with alerts — they carry more signal for the AI
+        def _priority(n):
+            return -len((n.get('meta') or {}).get('alerts') or [])
+
+        nodes_to_send = sorted(nodes, key=_priority)[:60]   # hard cap
+
+        # ── Build tree text ───────────────────────────────────────────────
+        lines = [
+            f"Host: {host} | IP: {ip} | Agent: {agent_id} | Range: {time_range}",
+            f"Total processes in tree: {len(nodes)}",
+            '',
+            '=== PROCESS NODES ===',
+        ]
+        for n in nodes_to_send:
+            meta        = n.get('meta') or {}
+            nid         = n.get('id', '')
+            name        = meta.get('name') or n.get('label', '').split('\n')[0]
+            pid         = meta.get('pid', '')
+            ppid        = meta.get('ppid', '')
+            user        = meta.get('user', '')
+            cmd         = (meta.get('cmd') or '')[:200]
+            full_path   = meta.get('fullPath', '')
+            integrity   = meta.get('integrityLevel', '')
+            observed    = meta.get('observed', True)
+            alerts      = meta.get('alerts') or []
+            connections = meta.get('connections') or []
+            sysmon      = meta.get('sysmonProcess') or {}
+
+            row = f"[{nid}] {name}"
+            if pid:          row += f" PID={pid}"
+            if ppid:         row += f" PPID={ppid}"
+            if not observed: row += " [UNOBSERVED PARENT]"
+            if user:         row += f" user={user}"
+            if integrity:    row += f" integrity={integrity}"
+            if full_path:    row += f"\n  path: {full_path}"
+            if cmd:          row += f"\n  cmd: {cmd}"
+            if sysmon.get('company'): row += f"\n  company: {sysmon['company']}"
+            if sysmon.get('product'): row += f"\n  product: {sysmon['product']}"
+            for conn in connections[:3]:
+                row += (f"\n  network: {conn.get('proto', '?')} "
+                        f"-> {conn.get('destIp', '')}:{conn.get('destPort', '')}")
+            for alert in alerts[:5]:
+                level     = alert.get('rule_level', 0)
+                rule_desc = alert.get('rule_desc', '')
+                rule_id   = alert.get('rule_id', '')
+                mitre_ids = ','.join(alert.get('mitre', []))
+                row += f"\n  ALERT(level={level}): {rule_desc} rule={rule_id}"
+                if mitre_ids:
+                    row += f" mitre={mitre_ids}"
+            lines.append(row)
+
+        if edges:
+            lines.append('\n=== PARENT -> CHILD EDGES ===')
+            for e in edges[:80]:
+                lines.append(f"  {e.get('from')} -> {e.get('to')}")
+
+        tree_text = '\n'.join(lines)
+
+        # ── System prompt ─────────────────────────────────────────────────
+        system_prompt = (
+            "You are an expert SOC analyst and threat hunter specialising in Windows "
+            "process forensics, DFIR, and MITRE ATT&CK mapping. You analyse process "
+            "trees extracted from Wazuh (SIEM/XDR) telemetry: Windows Security "
+            "EID 4688 and Sysmon.\n\n"
+            "Analyse the process tree below and return ONLY a valid JSON object — "
+            "no prose, no markdown fences, nothing outside the JSON:\n\n"
+            "{\n"
+            '  "risk_score": <integer 0-100>,\n'
+            '  "risk_level": <"LOW"|"MEDIUM"|"HIGH"|"CRITICAL">,\n'
+            '  "summary_en": [<sentence in English>, ...],\n'
+            '  "summary_pt": [<sentence in Brazilian Portuguese>, ...],\n'
+            '  "techniques": [{"id": "<T####.###>", "name": "<name>", '
+            '"confidence": <integer 0-100>}],\n'
+            '  "highlighted_nodes": [<node_id_string>, ...],\n'
+            '  "recommendations_en": [<action in English>, ...],\n'
+            '  "recommendations_pt": [<action in Brazilian Portuguese>, ...]\n'
+            "}\n\n"
+            "Rules:\n"
+            "- risk_score: 0-100 reflecting overall threat severity\n"
+            "- summary_en: 2-4 sentences in English\n"
+            "- summary_pt: same content in Brazilian Portuguese\n"
+            "- techniques: only MITRE ATT&CK techniques genuinely observed; confidence 0-100\n"
+            "- highlighted_nodes: node IDs (strings) that are part of a suspicious chain\n"
+            "- recommendations_en: 2-3 actionable steps in English\n"
+            "- recommendations_pt: same recommendations in Brazilian Portuguese"
+        )
+
+        # ── Call Claude Sonnet 4.6 ────────────────────────────────────────
+        client = _anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=2000,
+            system=system_prompt,
+            messages=[{'role': 'user', 'content': tree_text}],
+        )
+
+        raw = msg.content[0].text.strip()
+        # Strip markdown fences if Claude wraps the JSON
+        if raw.startswith('```'):
+            raw = '\n'.join(raw.split('\n')[1:])
+            raw = raw.rsplit('```', 1)[0].strip()
+
+        result = _json.loads(raw)
+        result['model']  = 'claude-sonnet-4-6'
+        result['tokens'] = {
+            'input':  msg.usage.input_tokens,
+            'output': msg.usage.output_tokens,
+        }
+        logger.debug('[analyze_tree] risk=%s techniques=%d highlighted=%d',
+                     result.get('risk_score'),
+                     len(result.get('techniques', [])),
+                     len(result.get('highlighted_nodes', [])))
+        return result
