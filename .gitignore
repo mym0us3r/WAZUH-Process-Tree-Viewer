@@ -1,6 +1,7 @@
 # WPTV - credentials and environment
 wptv.env
 *.env
+!*_example.env
 
 # WPTV - certificates (environment-specific, never distribute)
 *.pem
