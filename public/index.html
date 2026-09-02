@@ -15,6 +15,26 @@ body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #f7f8fa
 button { background: #185fa5; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 #loadBtn { background: #111827; color: #00a0d1; border: 1.5px solid #00a0d1; }
 body.theme-light #loadBtn { background: #00a0d1; color: #ffffff; border: none; }
+#aiBtn {
+    background: #111827;
+    color: #00a0d1;
+    border: 1.5px solid #00a0d1;
+    border-radius: 4px;
+    padding: 8px 16px; cursor: pointer; font-weight: bold;
+    display: inline-flex; align-items: center; gap: 6px; font-family: inherit;
+}
+#aiBtn:disabled { background: #4b5563; border-color: #4b5563; color: #9ca3af; cursor: not-allowed; }
+body.theme-light #aiBtn { background: #00a0d1; color: #ffffff; border: none; }
+body.theme-light #aiBtn:disabled { background: #7dd3fc; color: #fff; }
+#aiBtn .ai-spinner {
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,.35);
+    border-top-color: #fff; border-radius: 50%;
+    animation: _aispin .6s linear infinite; display: none;
+}
+#aiBtn.loading .ai-spinner { display: inline-block; }
+#aiBtn.loading .ai-label   { display: none; }
+@keyframes _aispin { to { transform: rotate(360deg); } }
 button:disabled { background: #b4b2a9; cursor: not-allowed; }
 input, select { background: #ffffff; border: 1px solid #b4b2a9; color: #2c2c2a; padding: 8px; border-radius: 4px; }
 .stats { background: #ffffff; padding: 5px 25px; font-size: 12px; color: #5f5e5a; font-weight: bold; }
@@ -240,6 +260,10 @@ TO: <input type="datetime-local" id="endInput">
 <button id="loadBtn" onclick="loadTree()">ANALYZE</button>
 <button id="showAllBtn" onclick="showAllTrees()" style="display:none;background:#d97706;color:#fff;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">← SHOW ALL</button>
 <button onclick="exportAsPdf()" style="background:#e5e3da;color:#2c2c2a;font-weight:700;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">EXPORT PDF</button>
+<button id="aiBtn" onclick="analyzeWithAI()" title="Run AI Threat Analysis on current tree.">
+  <span class="ai-label">AI ANALYZE</span>
+  <span class="ai-spinner"></span>
+</button>
 </div>
 <div class="stats">
 PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</span> | UPDATED: <span id="statTime">--:--:--</span>
@@ -263,6 +287,7 @@ PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</s
 <button class="tabBtn active" id="tabBtn-basic" onclick="showDetailTab('basic')">Basic Properties</button>
 <button class="tabBtn" id="tabBtn-alerts" onclick="showDetailTab('alerts')">Alerts <span id="alertBadge" style="background:#ef4444;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:3px;display:none;">0</span></button>
 <button class="tabBtn" id="tabBtn-detections" onclick="showDetailTab('detections')">Detections</button>
+<button class="tabBtn" id="tabBtn-ai" onclick="showDetailTab('ai')">AI Analysis</button>
 </div>
 
 <div id="tabPane-basic" class="tabPane">
@@ -287,6 +312,14 @@ PROCESSES: <span id="statTotal">0</span> | AGENT: <span id="agentDisplay">---</s
 <pre id="detailFileCreates" style="display:none; margin-top:10px; color:#86efac;"></pre>
 <div id="detailSysmonRules" style="display:none; margin-top:10px;"></div>
 <div id="detectionsEmpty" class="placeholder">Sysmon Telemetry (EID 1 to 29): Correlated for this process in the queried window are shown under the Relations tab.</div>
+</div>
+
+<!-- AI Analysis tab pane -->
+<div id="tabPane-ai" class="tabPane" style="display:none;">
+  <div id="aiPlaceholder" class="placeholder">
+    Click <strong>AI ANALYZE</strong> in the toolbar to run a full AI threat analysis on the current process tree using Claude Sonnet 4.6.
+  </div>
+  <div id="aiResult" style="display:none;"></div>
 </div>
 
 <div id="commentsEmpty" class="placeholder" style="display:none;">No comments yet - be the first to leave a note for the next analyst.</div>
@@ -343,6 +376,220 @@ const ENRICHED_BORDER  = '#c9a227';
 // nodes. circularImage shape is more robust with data URIs in vis-network.
 const WPTV_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="none" stroke="#00a0d1" stroke-width="3.2"/><line x1="28" y1="28" x2="39" y2="39" stroke="#00a0d1" stroke-width="3.8" stroke-linecap="round"/><circle cx="15" cy="16" r="2.2" fill="#00a0d1"/><circle cx="24" cy="13" r="2.2" fill="#00a0d1"/><circle cx="20" cy="24" r="2.5" fill="#00a0d1"/><line x1="15" y1="16" x2="20" y2="24" stroke="#00a0d1" stroke-width="1.8"/><line x1="24" y1="13" x2="20" y2="24" stroke="#00a0d1" stroke-width="1.8"/></svg>`;
 const WPTV_ICON_URI = 'data:image/svg+xml;base64,' + btoa(WPTV_ICON_SVG);
+
+// ── AI Analysis (Claude Sonnet 4.6) ─────────────────────────────────────────
+async function analyzeWithAI() {
+    if (!nodesDataset || nodesDataset.length === 0) {
+        alert('No processes loaded. Run ANALYZE first.');
+        return;
+    }
+
+    const btn = document.getElementById('aiBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    // Show AI tab immediately with loading indicator
+    document.getElementById('detailTabs').style.display = 'block';
+    showDetailTab('ai');
+    document.getElementById('aiPlaceholder').style.display = 'none';
+    document.getElementById('aiResult').style.display = 'block';
+    document.getElementById('aiResult').innerHTML =
+        '<div style="color:#a78bfa;font-size:13px;padding:20px 0;display:flex;' +
+        'align-items:center;gap:10px;">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;' +
+        'border-top-color:transparent;border-radius:50%;animation:_aispin .6s linear infinite;"></span>' +
+        'Running AI threat analysis with Claude Sonnet 4.6...</div>';
+
+    try {
+        const allNodes = nodesDataset.get();
+        const allEdges = edgesDataset ? edgesDataset.get() : [];
+
+        // Read agent identity from the toolbar inputs
+        const agentIdEl    = document.getElementById('agentDisplay');
+        const hostInput    = document.querySelector('input[placeholder="e.g. LABDESK"]');
+        const ipInput      = document.querySelector('input[placeholder="e.g. 192.168.1.10"]');
+        const rangeSelect  = document.querySelector('select');
+
+        const payload = {
+            nodes:      allNodes,
+            edges:      allEdges,
+            agent_id:   agentIdEl   ? agentIdEl.innerText.trim()   : '',
+            host:       hostInput   ? hostInput.value.trim()        : '',
+            ip:         ipInput     ? ipInput.value.trim()          : '',
+            time_range: rangeSelect ? rangeSelect.value             : '',
+        };
+
+        const res = await fetch('/wptv/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+            throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        renderAIResult(data);
+
+        // Highlight suspicious nodes on the graph
+        if (data.highlighted_nodes && data.highlighted_nodes.length && nodesDataset) {
+            const updates = data.highlighted_nodes.map(id => ({
+                id,
+                color:       { border: '#7c3aed', background: '#faf5ff' },
+                borderWidth: 3,
+            }));
+            nodesDataset.update(updates);
+        }
+
+    } catch (e) {
+        document.getElementById('aiResult').innerHTML =
+            '<div style="color:#f87171;font-size:12px;padding:10px;background:#450a0a;' +
+            'border-radius:6px;line-height:1.6;">' +
+            '<strong>AI Analysis error:</strong><br>' + e.message +
+            '<br><br><span style="color:#9ca3af;">Check that WPTV_ANTHROPIC_API_KEY ' +
+            'is set in wptv.env and the service has been restarted.</span></div>';
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }
+}
+
+function renderAIResult(data) {
+    const RC = {
+        LOW:      { bg: '#064e3b', text: '#6ee7b7', border: '#059669' },
+        MEDIUM:   { bg: '#78350f', text: '#fcd34d', border: '#d97706' },
+        HIGH:     { bg: '#7f1d1d', text: '#fca5a5', border: '#ef4444' },
+        CRITICAL: { bg: '#4c1d95', text: '#ddd6fe', border: '#7c3aed' },
+    };
+    const level  = (data.risk_level || 'LOW').toUpperCase();
+    const rc     = RC[level] || RC.LOW;
+    const score  = data.risk_score || 0;
+    const tokens = data.tokens || {};
+
+    // Store data globally for language toggle
+    window._aiLastResult = data;
+    window._aiLang = 'en';
+
+    let html = '';
+
+    // ── Risk banner ──────────────────────────────────────────────────────
+    html += `<div style="background:${rc.bg};border-left:4px solid ${rc.border};
+        border-radius:6px;padding:10px 14px;margin-bottom:12px;
+        display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:30px;font-weight:500;color:${rc.text};line-height:1;">${score}</div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:${rc.text};">${level} RISK</div>
+          <div style="font-size:9px;color:${rc.text};opacity:.7;margin-top:3px;">
+            ${data.model || 'claude-sonnet-4-6'} &nbsp;|&nbsp;
+            ${(tokens.input || 0).toLocaleString()} in / ${(tokens.output || 0).toLocaleString()} out tokens
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        <button id="aiBtnLangEn" onclick="switchAILang('en')"
+          style="background:#00a0d1;color:#fff;border:none;border-radius:4px;
+          padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">EN</button>
+        <button id="aiBtnLangPt" onclick="switchAILang('pt')"
+          style="background:transparent;color:#00a0d1;border:1px solid #00a0d1;border-radius:4px;
+          padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">PT-BR</button>
+      </div>
+    </div>`;
+
+    // ── Summary ──────────────────────────────────────────────────────────
+    html += '<div id="aiSummaryBlock">';
+    html += '<div style="font-size:8px;font-weight:700;color:#9ca3af;text-transform:uppercase;' +
+            'letter-spacing:.06em;margin-bottom:6px;">Summary</div>';
+    (data.summary_en || data.summary || []).forEach(s => {
+        html += `<div class="ai-sum-en" style="background:#1f2937;border-radius:5px;padding:8px 10px;
+            margin-bottom:6px;font-size:11px;color:#e2e8f0;line-height:1.6;">${s}</div>`;
+    });
+    (data.summary_pt || []).forEach(s => {
+        html += `<div class="ai-sum-pt" style="background:#1f2937;border-radius:5px;padding:8px 10px;
+            margin-bottom:6px;font-size:11px;color:#e2e8f0;line-height:1.6;display:none;">${s}</div>`;
+    });
+    html += '</div>';
+
+    // ── MITRE ATT&CK techniques (always EN - MITRE standard) ─────────────
+    if (data.techniques && data.techniques.length) {
+        html += '<div style="font-size:8px;font-weight:700;color:#9ca3af;text-transform:uppercase;' +
+                'letter-spacing:.06em;margin:10px 0 6px;">MITRE ATT&CK Techniques</div>';
+        data.techniques.forEach(t => {
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;
+                border-bottom:.5px solid #1f2937;">
+              <span style="background:#4f46e511;color:#a78bfa;border:.5px solid #4f46e544;
+                border-radius:4px;padding:2px 6px;font-size:9px;font-family:monospace;
+                flex-shrink:0;">${t.id}</span>
+              <span style="font-size:10px;color:#e2e8f0;flex:1;">${t.name}</span>
+              <span style="font-size:9px;color:#6b7280;">${t.confidence}%</span>
+            </div>`;
+        });
+    }
+
+    // ── Recommendations ──────────────────────────────────────────────────
+    const recsEn = data.recommendations_en || data.recommendations || [];
+    const recsPt = data.recommendations_pt || [];
+    if (recsEn.length || recsPt.length) {
+        html += '<div style="font-size:8px;font-weight:700;color:#9ca3af;text-transform:uppercase;' +
+                'letter-spacing:.06em;margin:10px 0 6px;">Recommendations</div>';
+        recsEn.forEach((r, i) => {
+            html += `<div class="ai-rec-en" style="display:flex;gap:8px;margin-bottom:7px;align-items:flex-start;">
+              <span style="background:#00a0d1;color:#fff;border-radius:50%;min-width:17px;
+                height:17px;display:flex;align-items:center;justify-content:center;
+                font-size:9px;font-weight:700;margin-top:1px;">${i + 1}</span>
+              <span style="font-size:11px;color:#e2e8f0;line-height:1.55;">${r}</span>
+            </div>`;
+        });
+        recsPt.forEach((r, i) => {
+            html += `<div class="ai-rec-pt" style="display:none;gap:8px;margin-bottom:7px;align-items:flex-start;">
+              <span style="background:#00a0d1;color:#fff;border-radius:50%;min-width:17px;
+                height:17px;display:flex;align-items:center;justify-content:center;
+                font-size:9px;font-weight:700;margin-top:1px;">${i + 1}</span>
+              <span style="font-size:11px;color:#e2e8f0;line-height:1.55;">${r}</span>
+            </div>`;
+        });
+    }
+
+    // ── Highlighted nodes note ───────────────────────────────────────────
+    if (data.highlighted_nodes && data.highlighted_nodes.length) {
+        html += `<div style="margin-top:10px;background:#1f2937;border-radius:5px;
+            padding:7px 10px;font-size:10px;color:#9ca3af;">
+          ${data.highlighted_nodes.length} node(s) highlighted on the graph with a purple border.
+        </div>`;
+    }
+
+    document.getElementById('aiResult').innerHTML = html;
+}
+
+function switchAILang(lang) {
+    window._aiLang = lang;
+    const isEn = (lang === 'en');
+
+    // Toggle summary visibility
+    document.querySelectorAll('.ai-sum-en').forEach(el => el.style.display = isEn ? 'block' : 'none');
+    document.querySelectorAll('.ai-sum-pt').forEach(el => el.style.display = isEn ? 'none' : 'block');
+
+    // Toggle recommendations visibility
+    document.querySelectorAll('.ai-rec-en').forEach(el => el.style.display = isEn ? 'flex' : 'none');
+    document.querySelectorAll('.ai-rec-pt').forEach(el => el.style.display = isEn ? 'none' : 'flex');
+
+    // Update section header label
+    const recHdr = document.querySelector('#aiResult [style*="Recommendations"]');
+    if (recHdr) recHdr.textContent = isEn ? 'Recommendations' : 'Recomendações';
+
+    const sumHdr = document.querySelector('#aiResult [style*="Summary"]');
+    if (sumHdr) sumHdr.textContent = isEn ? 'Summary' : 'Resumo';
+
+    // Toggle button styles
+    const btnEn = document.getElementById('aiBtnLangEn');
+    const btnPt = document.getElementById('aiBtnLangPt');
+    if (btnEn) { btnEn.style.background = isEn ? '#00a0d1' : 'transparent'; btnEn.style.color = isEn ? '#fff' : '#00a0d1'; }
+    if (btnPt) { btnPt.style.background = isEn ? 'transparent' : '#00a0d1'; btnPt.style.color = isEn ? '#00a0d1' : '#fff'; }
+}
 
 // ── Skin toggle ──────────────────────────────────────────────────────────────
 const MOON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
@@ -1660,7 +1907,7 @@ function showNetworkNodeInfo(nodeId, node) {
 }
 
 function showDetailTab(tab) {
-    ['basic', 'alerts', 'detections'].forEach((t) => {
+    ['basic', 'alerts', 'detections', 'ai'].forEach((t) => {
         const pane = document.getElementById('tabPane-' + t);
         const btn  = document.getElementById('tabBtn-'  + t);
         if (pane) pane.style.display = (t === tab) ? 'block' : 'none';
