@@ -37,16 +37,26 @@
 
 - Edge label font color darkened from `#6b7280` to `#374151` for improved readability on the now-always-white canvas.
 
+### AI Analyzer
+
+- New **AI ANALYZE** button added to the navigation bar. Sends the resolved process tree and its correlated detections (the same Sysmon + Windows Audit Event IDs already covered by WPTV's correlation) to the Anthropic API using the **Claude Sonnet 4.6** model.
+- New **AI Analysis** tab added to the process detail panel, after Basic Properties, Alerts, and Detections. Renders a 0-100 risk score with categorical label (e.g. `HIGH RISK`), model name and token consumption (input/output), a multi-paragraph narrative summary, a MITRE ATT&CK technique table with per-technique confidence, and prioritized remediation recommendations.
+- **Language toggle** (`EN` / `PT-BR`) added to the AI Analysis tab, re-rendering the same analysis in both languages without an additional API call cost visible to the user.
+- New environment variable `WPTV_ANTHROPIC_API_KEY` added to `wptv.env` / `wptv_example.env`. When unset, the AI ANALYZE button stays hidden and no other WPTV behavior is affected - the feature is fully optional and off by default.
+- This is the only WPTV feature that sends data outside the local Wazuh environment; documented in `README.md` under "AI Analyzer" with a data-flow disclaimer.
+- Validated end-to-end against a full RMM (ScreenConnect) adversarial abuse chain - initial elevated execution, UAC bypass (rule 92312), software hiding via registry (rule 92311), C2 beacon (rule 92111), mass reconnaissance (rule 92027 + EID 4104), and anti-forensics (rule 92561) - with AI ANALYZE correctly scoring the originating tree at 82/100 HIGH RISK and mapping it to six MITRE ATT&CK techniques.
+
 ### Documentation
 
-- `README.md` rewritten to reflect v2.1: new UI Features section (Skin Toggle, Process Category Icons, Parent Process Node), updated screenshots referencing `wptv_dark_blue.png` and `wptv_clear_blue.png`, integrity SHA256 table updated, last updated date set to 2026-08-27.
+- `README.md` rewritten to reflect v2.1: new UI Features section (Skin Toggle, Process Category Icons, Parent Process Node), new AI Analyzer section (button, AI Analysis tab, configuration, data-flow disclaimer), updated screenshots referencing `wptv_dark_blue.png`, `wptv_clear_blue.png`, `ai_analyze_full.png`, `ai_analysis_risk.png`, and `ai_analysis_mitre.png`, integrity SHA256 table updated, last updated date set to 2026-08-27.
 - `CHANGELOG.md` updated with this entry.
+- Companion write-up published: [Leveraging the Wazuh Ingestion Ecosystem for Advanced Threat Hunting](https://www.linkedin.com/pulse/leveraging-wazuh-ingestion-ecosystem-advanced-threat-rodrigues-bh9bf), documenting the three-tier ingestion method, the RMM abuse case study, and the AI Analyzer end to end.
 
 ---
 
 ### Development history (internal reference)
 
-This version was developed across an extended working session covering the RMM adversarial simulation, five new Wazuh detection rules (92111, 92311, 92312, 92313, 92561), WPTV UI redesign (skin system, category icons, parent node improvements), and technical report generation (PT-BR, 15 pages with lab screenshots).
+This version was developed across an extended working session covering the RMM adversarial simulation, five new Wazuh detection rules (92111, 92311, 92312, 92313, 92561), WPTV UI redesign (skin system, category icons, parent node improvements), the AI Analyzer integration (Claude Sonnet 4.6, `WPTV_ANTHROPIC_API_KEY`), and technical report generation (PT-BR, 15 pages with lab screenshots).
 
 ---
 
@@ -80,10 +90,3 @@ This version was developed across an extended working session covering the RMM a
 - Migrated the validation environment from the stock Wazuh 4.14.4 Sysmon ruleset to [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs), on both the Wazuh Manager (rule files) and the endpoint (`sysmon-native.xml`).
 - Found and fixed a missing `-enc` abbreviation in the PowerShell Base64-encoded-command detection (rules `92057`/`92059`/`92071`), present in both the stock ruleset and the rewrite.
 - Found and documented (not yet fixed) a missing end-of-string anchor in rule `92213`, which misclassifies legitimate `.json` files as executables.
-
-### Documentation
-
-- New technical report: `docs/WPTV_Relatorio_Tecnico_PT.docx` (Brazilian Portuguese) - development methodology, adversarial simulation commands, Sysmon correlation architecture, and the ruleset bugs above.
-- README rewritten to reflect all of the above; added a "Companion Sysmon Ruleset" section and this changelog.
-- Demo replaced: the linked `.mp4` (blob link, download-only on GitHub) was replaced with an embedded, autoplaying GIF (`img/wptv_demo.gif`, sped up ~6x from the original 102-second recording).
-
