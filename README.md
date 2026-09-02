@@ -16,6 +16,8 @@ WPTV transforms raw Windows Security Logs (Event ID 4688) and Sysmon telemetry i
 > **OpenSearch Dashboards:** 2.19.4 / 2.19.5
 > **Companion Sysmon ruleset (recommended):** [Native Sysmon Rewrite by m0us3r](https://github.com/mym0us3r/Unified-Sysmon-Configs)
 
+> **AI Analyzer (v2.1+):** Starting with v2.1, WPTV is also referred to as **WPTV (Wazuh Process Tree Viewer) v2.1 AI Analyzer**. The AI ANALYZE button adds an optional, on-demand analysis layer powered by Claude Sonnet 4.6 - see [AI Analyzer](#ai-analyzer) below.
+
 ### Compatibility Note
 
 WPTV v2.1 was originally developed and validated on **Wazuh 4.14.4**, which uses **OpenSearch Dashboards 2.19.4**.
@@ -126,6 +128,39 @@ When the direct parent of a displayed tree was not observed within the queried t
   ```
 
 Fields with no data are omitted. The time is displayed without sub-second precision. `RULE ID` is never shown in the tooltip; it is already visible in the Basic Properties tab of the right panel.
+
+---
+
+## AI Analyzer
+
+Starting with v2.1, WPTV includes an optional **AI ANALYZE** button in the navigation bar, alongside the existing controls. It sends the already-resolved process tree and its correlated detections - the same 38 Event IDs covered in the [Sysmon EventID Coverage Map](#sysmon-eventid-coverage-map) and [Windows Audit Event ID Coverage](#windows-audit-event-id-coverage) tables - to the Anthropic API, using the **Claude Sonnet 4.6** model.
+
+The analysis appears in a new **AI Analysis** tab in the process detail panel, positioned after Basic Properties, Alerts, and Detections:
+
+- A **risk score** from 0 to 100, with a categorical label (e.g. `HIGH RISK`)
+- **Model identification** and **token consumption** (input/output)
+- A **narrative summary** describing the attack chain, or the absence of one
+- A **MITRE ATT&CK technique table**, each entry with a confidence percentage
+- **Prioritized, actionable remediation recommendations**
+- A **language toggle** (`EN` / `PT-BR`) that re-renders the same analysis in both languages
+
+![AI Analyzer](img/ai_analyze_full.png)
+
+### How It Works
+
+AI ANALYZE does not run any additional correlation of its own. It reads exactly what an analyst would already see in the Basic Properties, Alerts, and Detections tabs for the selected node and its resolved subtree, and asks the model to summarize, score, and map that evidence to MITRE ATT&CK - compressing the time between "here is the data" and "here is a prioritized attack hypothesis." It is first-pass triage, not a replacement for analyst judgment or for the native Wazuh correlation described in this document.
+
+### Configuration
+
+Add the following to `wptv.env` (see [Wazuh Indexer Credentials](#5-wazuh-indexer-credentials)):
+
+```
+WPTV_ANTHROPIC_API_KEY=<your_anthropic_api_key>
+```
+
+If `WPTV_ANTHROPIC_API_KEY` is not set, the AI ANALYZE button remains hidden and the rest of WPTV is unaffected - the AI layer is fully optional.
+
+> **Data flow disclaimer:** AI ANALYZE is the only WPTV feature that sends data outside the local Wazuh environment. Everything else in this project - Indexer queries, archive scans, PID normalization, graph rendering - runs entirely within your infrastructure. Enabling AI ANALYZE means the resolved process tree and its correlated detections for the analyzed node are sent to the Anthropic API. Evaluate this against your organization's data classification and residency requirements before enabling it outside a lab context.
 
 ---
 
@@ -365,13 +400,40 @@ nano /etc/wazuh-process-tree/wptv.env
 `wptv.env` template:
 
 ```
+# WPTV Environment Configuration
+# Copy this file to /etc/wazuh-process-tree/wptv.env and fill in your values.
+# Never commit wptv.env to version control.
+
+# ── Primary data source: Wazuh Indexer (wazuh-alerts-*) ──────────────────────
+# Events that triggered a Wazuh rule. Required for tree construction.
 WPTV_INDEXER_URL=https://127.0.0.1:9200
 WPTV_INDEXER_INDEX=wazuh-alerts-*
 WPTV_INDEXER_USER=wptv_svc
 WPTV_INDEXER_PASSWORD=<your_password>
 WPTV_INDEXER_CA_CERT=/etc/wazuh-process-tree/certs/root-ca.pem
+
+# ── Archive data source: wazuh-archives-* (optional, recommended) ────────────
+# Supplements the primary source with events that did NOT trigger a rule,
+# including EID 4689 (Process Termination), EID 4104 (PowerShell Script Block
+# without a matching rule), and any other telemetry forwarded by the agent.
+#
+# Prerequisites:
+#   1. filebeat.yml:  archives:  enabled: true   (restart filebeat after change)
+#   2. OSD:           Dashboards Management > Index Patterns > wazuh-archives-*
+#
+# When enabled, WPTV queries this index BEFORE the archives.json file scan,
+# which is significantly faster for large time windows (30+ days).
+# Set to empty (WPTV_ARCHIVE_INDEX=) to disable and fall back to file scan.
 WPTV_ARCHIVE_INDEX=wazuh-archives-*
 
+# ── AI Analyzer (optional) ────────────────────────────────────────────────────
+# Powers the AI ANALYZE button (Claude Sonnet 4.6). If left unset, the button
+# stays hidden and the rest of WPTV is unaffected - see "AI Analyzer" section
+# in README.md for the data-flow disclaimer before enabling this in production.
+WPTV_ANTHROPIC_API_KEY=<your_anthropic_api_key>
+```
+
+```bash
 chown wazuh-dashboard:wazuh-dashboard /etc/wazuh-process-tree/wptv.env
 chmod 600 /etc/wazuh-process-tree/wptv.env
 ```
@@ -607,6 +669,7 @@ tail -f /var/log/wazuh-process-tree/wptv.log
 - Optionally add a **PROCESS FILTER** by process name.
 - Optionally add an **EventID** filter.
 - Click the **moon / sun icon** in the top-right corner of the navbar to toggle between Dark and Light skins. The preference is saved in the browser.
+- If `WPTV_ANTHROPIC_API_KEY` is configured, click **AI ANALYZE** to run an on-demand AI risk assessment on the current tree - see [AI Analyzer](#ai-analyzer).
 
 ### EXPORT PDF
 
@@ -656,6 +719,13 @@ Multiple PowerShell child instances created by a parent PowerShell - rule 92027,
 
 ![PowerShell Spawning PowerShell](img/ps-spawned.png)
 
+### AI Analyzer - Risk Score and MITRE Mapping
+
+AI ANALYZE run against a process tree rooted at `explorer.exe`: a PowerShell process silently installed a ScreenConnect remote access client disguised as an Excel spreadsheet via `msiexec /qn`. Result: 82/100 HIGH RISK, mapped to six MITRE ATT&CK techniques.
+
+![AI Analyzer - Risk Score](img/ai_analysis_risk.png)
+![AI Analyzer - MITRE Mapping](img/ai_analysis_mitre.png)
+
 ---
 
 ## Integrity Reference (v2.1 - 2026-08-27)
@@ -669,6 +739,12 @@ SHA256 hashes of production files:
 | `index.html` | `process_tree_api/public/` | `bc64976d8365a8add82daf88b7eb80e86d0a4502afbd138b31629272a039b9b2` |
 | `wptv.plugin.js` | `plugins/wptv/target/public/` | `e9dbd78fc0cc30c317307b55c9309dba14fd7da9dba4ff2137b55af651d6a6a1` |
 | `wptv.plugin.js.gz` | `plugins/wptv/target/public/` | `fe211c07b875fcf0bf436cc636068040f223471b2f0f5da5f5057a3931f94005` |
+
+---
+
+## Further Reading
+
+[Leveraging the Wazuh Ingestion Ecosystem for Advanced Threat Hunting](https://www.linkedin.com/pulse/leveraging-wazuh-ingestion-ecosystem-advanced-threat-rodrigues-bh9bf) - a full write-up covering the three-tier ingestion method, PID normalization, four adversarial simulation case studies, a complete RMM-abuse chain, and the AI Analyzer, all validated against this project.
 
 ---
 
