@@ -149,6 +149,27 @@ def post_comment():
         logger.error("post-comment ERROR: %s", e)
         return jsonify({"error": str(e)}), 500
 
+# ── AI Analysis ──────────────────────────────────────────────────────────────
+@app.route('/api/analyze', methods=['POST'])
+def analyze():
+    """
+    AI-powered analysis of the current WPTV process tree.
+    Calls Claude Sonnet 4.6 and returns structured threat analysis.
+    Requires WPTV_ANTHROPIC_API_KEY set in /etc/wazuh-process-tree/wptv.env.
+    """
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        result  = logic.analyze_tree(payload)
+        logger.info('[/api/analyze] risk_score=%s tokens_in=%s tokens_out=%s',
+                    result.get('risk_score', '?'),
+                    result.get('tokens', {}).get('input', '?'),
+                    result.get('tokens', {}).get('output', '?'))
+        return jsonify(result)
+    except Exception as e:
+        logger.exception('[/api/analyze] ERROR: %s', e)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
